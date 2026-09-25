@@ -2,6 +2,7 @@
 """浅色置顶悬浮框：挂在聊天窗口旁边，手动生成 / 手动润色 / 手动发送。
 
 不自动分析：新消息只记进上下文和聊天记录，调不调模型、发不发，全看用户点没点按钮。
+「润色并发送」和它的开关也只改变「按发送键之后先润色再发」，一样要用户自己按。
 窗口默认吸附在聊天窗口右侧（屏幕右边放不下就翻到左边），拖一下就脱开，点图钉再吸回来。
 """
 import threading
@@ -30,7 +31,7 @@ _MUTED = "#68776f"
 _GREEN = "#18794e"
 _CHAT_GAP = 8      # 吸附时跟聊天窗口之间留的空隙
 _INPUT_H = 96      # 输入框高度（默认那种一条的写长句子太挤）
-_BUTTON_H = 38     # 生成回复 / 润色 / 发送三个按钮的高度（比控件默认高一档）
+_BUTTON_H = 38     # 生成回复 / 润色 / 润色并发送 / 发送 四个按钮的高度（比控件默认高一档）
 _FEED_H = 180      # 记录区高度：窗口高度跟着内容走，所以这里给个定值，别让它俩互相追着变
 _SETTINGS_H = 640  # 设置页给这么高的窗口（表单长，再高屏幕也放不下，里面本来就有滚动条）
 # 界面上的名字就用这两个汉字；polish-chat 那个英文名只出现在文件名、exe、发布包和仓库名上
@@ -175,10 +176,12 @@ class _MainWindow(QWidget):
 
 class Overlay:
     def __init__(self, on_generate, on_polish, on_send, on_toggle_capture=None,
-                 on_target_change=None, on_toggle_debug=None):
+                 on_target_change=None, on_toggle_debug=None, on_polish_and_send=None):
         """on_generate(会话名) → 用户点了「生成回复」。
         on_polish(草稿, 会话名) → 用户点了「润色」。
         on_send(文字, 会话名) → 用户点了「发送」（父进程负责粘贴 + 回车）。
+        on_polish_and_send(草稿, 会话名) → 用户点了「润色并发送」/ 按了 Ctrl+Shift+回车，
+        或者开了「发送前润色」后点了「发送」；父进程润完直接发，发失败会把结果留在输入框里。
         on_target_change(会话名, 人名) → 用户在群里挑了回复对象。
         on_toggle_debug(开不开) → 开关调试视图那个独立窗口。"""
         self.app = QApplication.instance() or QApplication([])
@@ -187,6 +190,8 @@ class Overlay:
         self.on_generate = on_generate
         self.on_polish = on_polish
         self.on_send = on_send
+        # 没传就退回「润了就填进框里、发送还是自己按」：老调用方（预览脚本等）不用跟着改
+        self.on_polish_and_send = on_polish_and_send or (lambda text, title: self.on_polish(text, title))
         self.on_toggle_capture = on_toggle_capture
         self.on_target_change = on_target_change
         self.on_toggle_debug = on_toggle_debug
@@ -207,6 +212,7 @@ class Overlay:
         self._feed_open = False     # 聊天记录自己还有一层展开，收起详情时它不单独露头
         self._expanded_h = None     # 铺开时那个高：收起再展开要回到原来那个高度
         self._docked = settings.dock()
+        self._pending_send = None  # 正在等润色结果的那段原文：润色回来就直接发，不用再点一次
         self._rect = None       # 上次用过的聊天窗口位置，没变就不折腾
         self.win = _MainWindow(self._relayout)
         self.win.setObjectName("assistantWindow")
@@ -273,7 +279,8 @@ class Overlay:
         self.footer = QWidget(self.win)
         footer = QHBoxLayout(self.footer)
         footer.setContentsMargins(20, 9, 8, 8)
-        footer.addWidget(_label(f"手动生成 · 发送前请过目 · v{VERSION}", 11, _MUTED), 1)
+        self.footerLabel = _label("", 11, _MUTED)
+        footer.addWidget(self.footerLabel, 1)
         grip = QSizeGrip(self.footer)
         grip.setFixedSize(16, 16)
         footer.addWidget(grip, 0, Qt.AlignBottom)
@@ -288,14 +295,20 @@ class Overlay:
         self.win.move(screen.right() - width - 20 + 1, screen.bottom() - height - 20 + 1)
         self._relayout(width, height)  # resizeEvent 补不到构造时这一次
         self._sendShortcuts()
+        self._render_footer()
+        self._render_buttons()
         self._apply_capture_text(self.captureSwitch.isChecked())
         self.win.show()
 
     def _sendShortcuts(self):
-        """Ctrl+回车 = 发送。Enter 仍然是换行，写长句子不会手一抖发出去。"""
+        """Ctrl+回车 = 发送；Ctrl+Shift+回车 = 润色并发送（只这一次，不动那个开关）。
+        Enter 仍然是换行，写长句子不会手一抖发出去。"""
         for keys in ("Ctrl+Return", "Ctrl+Enter"):
             shortcut = QShortcut(QKeySequence(keys), self.win)
             shortcut.activated.connect(self._send)
+        for keys in ("Ctrl+Shift+Return", "Ctrl+Shift+Enter"):
+            shortcut = QShortcut(QKeySequence(keys), self.win)
+            shortcut.activated.connect(self._send_with_polish)
 
     def _scroll_page(self):
         scroll = ScrollArea()
@@ -341,6 +354,7 @@ class Overlay:
         for layout in self._pageLayouts:
             layout.setContentsMargins(*margins)
         self._render_alts()  # 窄了按钮上的字要更短，重排一次
+        self._render_buttons()
 
     # ---------------------------------------------------------------- 窗口高度
 
@@ -461,8 +475,12 @@ class Overlay:
         body.addStretch(1)
 
     def _build_composer(self):
-        """底部常驻的输入区：输入框 + 生成回复 / 润色 / 发送 + 备选 + 状态行。
-        放在滚动页外面，窗口再矮也够得着这三个按钮。"""
+        """底部常驻的输入区：输入框 + 生成回复 / 润色 / 发送 / 润色并发送 + 备选 + 状态行。
+        放在滚动页外面，窗口再矮也够得着这几个按钮。
+
+        按钮排成两行：第一行「生成回复 + 润色」= 让 AI 写点什么；第二行「发送 + 润色并发送」
+        = 把它发出去，区别只在发之前改不改。四个按钮挤一行在 420 宽的默认窗口里就只剩不到 80px 一个，
+        「润色并发送」会在按钮上被截掉。"""
         self.composer = _Surface()
         box = QVBoxLayout(self.composer)
         box.setContentsMargins(14, 12, 14, 10)
@@ -473,25 +491,31 @@ class Overlay:
         self.input.setFixedHeight(_INPUT_H)
         self.input.textChanged.connect(self._on_text_changed)
         box.addWidget(self.input)
-        buttons = QHBoxLayout()
-        buttons.setSpacing(8)
+        first = QHBoxLayout()
+        first.setSpacing(8)
         self.generateButton = PrimaryPushButton("生成回复")
         self.generateButton.setAccessibleName("按当前对话生成回复")
         self.generateButton.clicked.connect(self._generate)
-        buttons.addWidget(self.generateButton, 1)
+        first.addWidget(self.generateButton, 1)
         self.polishButton = PushButton("润色")
         self.polishButton.setAccessibleName("把输入框里的话润色得接得上对话")
         self.polishButton.setToolTip("把你写好的这段话改顺，让它接得上对话、像你本人说的；不改你的意思")
         self.polishButton.clicked.connect(self._polish)
-        buttons.addWidget(self.polishButton, 1)
+        first.addWidget(self.polishButton, 1)
+        box.addLayout(first)
+        second = QHBoxLayout()
+        second.setSpacing(8)
         self.sendButton = PushButton("发送")
         self.sendButton.setAccessibleName("发送到聊天窗口")
-        self.sendButton.setToolTip("粘进微信输入框并按一次回车（也可以按 Ctrl+回车）")
         self.sendButton.clicked.connect(self._send)
-        buttons.addWidget(self.sendButton, 1)
-        for button in (self.generateButton, self.polishButton, self.sendButton):
-            button.setFixedHeight(_BUTTON_H)  # 三个按钮比默认高一点：输入框上去了，按钮别还是细细一条
-        box.addLayout(buttons)
+        second.addWidget(self.sendButton, 1)
+        self.sendPolishButton = PushButton("润色并发送")
+        self.sendPolishButton.setAccessibleName("润色后直接发送到聊天窗口")
+        self.sendPolishButton.clicked.connect(self._send_with_polish)
+        second.addWidget(self.sendPolishButton, 1)
+        box.addLayout(second)
+        for button in (self.generateButton, self.polishButton, self.sendButton, self.sendPolishButton):
+            button.setFixedHeight(_BUTTON_H)  # 四个按钮比默认高一点：输入框上去了，按钮别还是细细一条
         self.altRow = QWidget()
         alt_row = QHBoxLayout(self.altRow)
         alt_row.setContentsMargins(0, 0, 0, 0)
@@ -915,12 +939,30 @@ class Overlay:
     def _draft_text(self):
         return self.input.toPlainText().strip()
 
+    def _render_buttons(self):
+        """按钮上的字 + 提示：两条发送路径的差别要写在按钮上，别让人猜点下去会不会多一次调用。"""
+        self.sendButton.setText("发送")
+        self.sendButton.setToolTip(
+            "粘进微信输入框并按一次回车，一个字都不改；也可以按 Ctrl+回车。\n"
+            "想发之前先改一遍：点「润色并发送」，或者按 Ctrl+Shift+回车。")
+        self.sendPolishButton.setToolTip(
+            "先把输入框里这段话润一遍（修错别字、按关系调口气、接上上下文）再发出去，"
+            "跟点「发送」只差这一次润色；也可以按 Ctrl+Shift+回车。\n"
+            "意思、态度、信息量不会变，原文留在「还原」里。")
+
+    def _render_footer(self):
+        self.footerLabel.setText(f"手动生成 · 发送前请过目 · v{VERSION}")
+
     def _can_act(self):
         """浏览别的会话时不让生成/发送——上下文和发送目标都是另一个会话的，容易串。"""
         return not self._busy and (not self._chat or self._shown == self._chat)
 
     def _keep_undo(self):
-        """每次覆盖输入框前留下一份，用户点错了能还原。"""
+        """每次覆盖输入框前留下一份，用户点错了能还原。
+        正在等「润色并发送」时跳过：这段原文马上会被润色结果覆盖，留着只会在备选行里
+        多出一个跟输入框差不多的按钮，点了等于没换。"""
+        if self._pending_send is not None:
+            return
         old = self.input.toPlainText()
         if old.strip():
             self._undo = old
@@ -945,6 +987,11 @@ class Overlay:
         self.set_busy(True, "正在结合上下文写回复…")
         self.on_generate(self._shown)
 
+    def _send_with_polish(self):
+        """「润色并发送」/ Ctrl+Shift+回车：润一遍，回来直接发。只这一次，不改别的。"""
+        if self._start_polish_send():
+            self.on_polish_and_send(self._pending_send, self._shown)
+
     def _polish(self):
         if not self._can_act():
             return
@@ -961,6 +1008,26 @@ class Overlay:
         self.set_busy(True, "正在润色，让它接得上对话…")
         self.on_polish(text, self._shown)
 
+    def _start_polish_send(self):
+        """润色并发送的公共前半段：查状态、留一份原文，返回要不要真的去润。"""
+        if not self._can_act():
+            return False
+        text = self._draft_text()
+        if not text:
+            self.set_status("先写点什么再发", "warning")
+            self.input.setFocus()
+            return False
+        if not settings.has_key():
+            # 没配模型：不能替用户静默改掉一次发送的语义（说好润色结果直发却发了原文）。
+            # 退成原样直发，并在状态行说清楚为什么，别让消息卡在输入框里出不去。
+            self.set_status("没配模型，这条直接原样发出去了；想让它先润色，先去设置里配一把 key", "warning")
+            self.on_send(text, self._shown)
+            return False
+        self._keep_undo()
+        self._pending_send = text
+        self.set_busy(True, "正在润色，改好就直接发出去…")
+        return True
+
     def _send(self):
         if not self._can_act():
             return
@@ -976,7 +1043,9 @@ class Overlay:
         self._refresh_buttons()
 
     def sent(self, ok, message):
-        """父进程回报发送结果：真发出去了才清空输入框。"""
+        """父进程回报发送结果：真发出去了才清空输入框。
+        发送失败（不管走的是哪条路）输入框里的东西都留着，用户不用重打。"""
+        self._pending_send = None
         self.set_status(message, "success" if ok else "error")
         if ok:
             self._set_box("")
@@ -1009,6 +1078,34 @@ class Overlay:
         self._set_box(text)
         self._render_alts()
         self.set_status("润色好了，看看顺不顺口；不满意点「还原」", "success")
+
+    def send_polished(self, text):
+        """「润色并发送」的第二步：润好的这段直接交给父进程发出去。
+        原样留在「还原」里；真发出去了才会清空输入框（见 sent()）。"""
+        self.set_busy(False)
+        if not str(text).strip():
+            self._pending_send = None
+            self.set_status("润色没返回内容，没发出去；再点一次「润色并发送」试试。", "error")
+            return
+        self._keep_undo()
+        self._set_box(text)
+        self._render_alts()
+        self.set_status("润色好了，正在发出去…", "busy")
+        self.on_send(str(text).strip(), self._shown)
+
+    def polish_failed(self, message, sending=False):
+        """润色这一步失败：一个字都没发出去。原文还在输入框里，随时能直接发。"""
+        self.set_busy(False)
+        if sending:
+            self._pending_send = None
+            self.set_status(f"{message}（没发出去，可以直接点「发送」原样发）", "error")
+        else:
+            self.set_status(message, "error")
+
+    def cancel_pending_send(self, message):
+        """结果对不上当前会话了：把「等着发」的状态清掉，别让它悬在那。"""
+        self._pending_send = None
+        self.set_status(message, "warning")
 
     def _render_alts(self):
         """备选按钮 + 「还原」：都是当前可用状态下才出现。"""
@@ -1304,11 +1401,13 @@ class Overlay:
         self._refresh_buttons()
 
     def _refresh_buttons(self):
-        """忙碌、浏览别的会话、输入框空 —— 三个按钮各自该不该亮。"""
+        """忙碌、浏览别的会话、输入框空 —— 四个按钮各自该不该亮。"""
         can = self._can_act()
+        has_text = bool(self._draft_text())
         self.generateButton.setEnabled(can)
-        self.polishButton.setEnabled(can and bool(self._draft_text()))
-        self.sendButton.setEnabled(can and bool(self._draft_text()))
+        self.polishButton.setEnabled(can and has_text)
+        self.sendButton.setEnabled(can and has_text)
+        self.sendPolishButton.setEnabled(can and has_text)
 
     def set_status(self, text, kind="idle"):
         colors = {"idle": _MUTED, "busy": _GREEN, "success": _GREEN,

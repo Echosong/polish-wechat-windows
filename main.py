@@ -28,7 +28,8 @@ from core.engine import generate, polish
 # 只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
 # senders：这个群里发过言的人，去重、最近的排最前；target：用户挑的回复对象（None = 跟着最近那个走）
 chats = {}
-state = {"area": None, "busy": False, "hwnd": None, "chat": ""}
+state = {"area": None, "busy": False, "hwnd": None, "chat": "",
+         "send_after_polish": False}  # 最后那个：这次润色跑完要不要接着发出去（「润色并发送」）
 jobs = queue.Queue()  # 后台线程 → 主线程：生成/润色/发送的结果
 update_result = queue.Queue()  # 独立小队列，别跟 jobs 的三元组形状搅在一起
 
@@ -129,6 +130,21 @@ def on_polish(text, title):
         ov.set_status("请先在设置里配置模型", "warning")
         return
     state["busy"] = True
+    threading.Thread(target=polish_bg, args=(text, title, list(chat_of(title)["history"])),
+                     daemon=True).start()
+
+
+def on_polish_and_send(text, title):
+    """「润色并发送」/ Ctrl+Shift+回车：润一遍，回来直接发。
+    只多一次润色调用，别的跟「自己点润色、再点发送」完全一样。"""
+    if state["busy"]:
+        return
+    if not settings.has_key():
+        ov.set_busy(False)
+        ov.set_status("请先在设置里配置模型", "warning")
+        return
+    state["busy"] = True
+    state["send_after_polish"] = True
     threading.Thread(target=polish_bg, args=(text, title, list(chat_of(title)["history"])),
                      daemon=True).start()
 
@@ -265,15 +281,23 @@ def tick():
             _, title, payload = job
             state["busy"] = False
             ov.set_busy(False)
+            send_now = state["send_after_polish"]  # 这一份结果是不是「润色并发送」要的
+            state["send_after_polish"] = False
             if title and title != ov.current_chat():  # 生成期间切走了：这份结果对不上现在要发的人，丢掉
-                ov.set_status("已经切到别的会话，这次生成/润色作废；切回去再点一次。", "warning")
+                if job[0] == "failed":
+                    ov.polish_failed(payload, send_now)  # 别把「失败原因」吞掉，用户得知道为什么
+                elif send_now:
+                    ov.cancel_pending_send("已经切到别的会话，这次没发出去（润色结果也作废了）；切回去再点一次。")
                 continue
             if job[0] == "replies":
                 ov.set_replies(payload)
             elif job[0] == "polished":
-                ov.set_polished(payload)
+                if send_now:
+                    ov.send_polished(payload)  # 润好了直接往外发，不再等用户点一次
+                else:
+                    ov.set_polished(payload)
             else:
-                ov.set_status(payload, "error")
+                ov.polish_failed(payload, send_now)
         if ov.docked():  # 吸附：聊天窗口挪了/缩了，悬浮框跟着贴过去
             ov.dock_to(window_rect(state["hwnd"]))
     except Exception:
@@ -289,7 +313,7 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     debug_on = multiprocessing.Event()  # 同上，置位=子进程往队列里送整帧给调试窗
     ov = Overlay(on_generate=on_generate, on_polish=on_polish, on_send=on_send,
                  on_toggle_capture=on_toggle_capture, on_target_change=on_target_change,
-                 on_toggle_debug=set_debug)
+                 on_toggle_debug=set_debug, on_polish_and_send=on_polish_and_send)
     child = dbg = None
     try:
         state["hwnd"] = find_wechat_hwnd()

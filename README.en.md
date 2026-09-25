@@ -1,44 +1,70 @@
-# polish-chat
+# 润色 · polish-wchat-windows
 
-**A manual reply box that floats next to your chat window.**
-It reads the conversation on screen with local OCR and keeps it as context. When you feel like replying,
-click once to generate a draft, or write your own and click polish — then hit send.
+**An AI reply box next to your chat window: it fixes what you typed before you send it.**
+Typos get cleaned up, and the tone adapts to *who* you are talking to — formal and humble with your boss,
+playful and flirty with your partner, casual with friends.
 
-`Windows 10 1903+ / 11` · `Local offline OCR` · `No auto-reply` · `MIT`
+[![Windows 10 1903+ / 11](https://img.shields.io/badge/Windows-10%201903%2B%20%2F%2011-0078D6?logo=windows&logoColor=white)](#requirements)
+[![Python 3.10–3.12](https://img.shields.io/badge/Python-3.10%E2%80%933.12-3776AB?logo=python&logoColor=white)](#requirements)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Echosong/polish-wchat-windows?label=release&color=blue)](https://github.com/Echosong/polish-wchat-windows/releases/latest)
 
-[中文说明 →](README.md)
+**[⬇ Download the latest release](https://github.com/Echosong/polish-wchat-windows/releases/latest)** · [中文说明 →](README.md)
 
 > The user interface is entirely in Chinese and the app calls itself **润色** ("polish");
-> `polish-chat` is only the project, file and repository name (`polish-chat.exe`, `polish-chat-vX.Y.Z.zip`).
+> `polish-wchat-windows` is only the project, file and repository name (`polish-chat.exe`, `polish-chat-vX.Y.Z.zip`).
 
 ---
 
-## What it is
+## What problem it actually solves
 
-A small always-on-top window next to your WeChat window. It captures that window with Windows Graphics
-Capture and reads it with a local offline OCR engine, so it knows what the conversation looks like.
-When you want to reply:
+In one line: **what you type is not always the impression you want to give.**
 
-- **Generate** — writes 3 candidates from the recent conversation. The first one lands in the input box;
-  the other two become "swap" buttons.
-- **Or write your own**, then **Polish** — rewrites only *how* you say it, never *what* you say.
-- **Send** — pastes into the WeChat input box and presses Enter (`Ctrl+Enter` works too).
+- **Typos, missing words, clunky sentences?** They happen when you are in a hurry, and you can reread your own
+  text ten times without spotting them. One click polishes typos, grammar and punctuation together.
+- **Not sure how loose or how formal to be with your boss or a client?** "I can't do this" becomes
+  "I'm not fully confident about this part — can I run it by you before I start?" for your boss, while
+  "yeah, that's not really my thing" is fine for a colleague.
+- **Sound like a quarterly report when talking to your partner?** "Get some rest" and "stay up a bit longer,
+  I can't sleep anyway" are the same message with different recipients.
+- **It is not that you cannot talk — you just cannot produce the right sentence on the spot.** Write it your
+  way, even roughly, and let it become something that fits the conversation and the person — **without changing
+  your meaning, your stance, or your information by a single word.**
+- **You do not have to remember that extra step before sending.** Hit **Polish & Send** (or `Ctrl+Shift+Enter`)
+  and it polishes the draft and sends it straight away — no "polish, look, send" three-step. Want it sent
+  verbatim? That is the plain **Send** button. Both paths are there; the only difference is that one polish.
 
-## What it deliberately does not do
+**Tone is driven by relationship settings**, plus an optional style line you write yourself.
 
-- **No auto-reply by default.** Incoming messages are only recorded as context, entirely offline. No model
-  is called, no request is sent, until you click a button. Idle time costs exactly zero tokens. If you want
-  it to draft on its own, flip the "自动生成" switch in the input row (off by default, not persisted, back to
-  off after a restart): every incoming message gets a draft dropped into the input box; if you already have
-  text in there it leaves you alone.
-- **No hooking, no injection, no reading WeChat's database or process memory.** It only screenshots its own
-  window and OCRs it — the same class of operation as a screen reader or a screen recorder.
-- **Frames never touch the disk.** Captured frames are numpy arrays in memory: never saved, never logged,
-  never uploaded.
-- **No money-related UI elements.** Transfers, red packets and payment screens are never touched, and the
-  prompts forbid those topics.
-- **It never presses send on its own.** There is no automatic send path anywhere in the program; the only
-  Enter press happens right after you click Send. The auto-draft switch only drafts — nothing can bypass this.
+| Who you are talking to | Preset you can set | What comes out |
+| --- | --- | --- |
+| Boss / client | rigorous, humble, concise, neither servile nor stiff | "I'll have this cleaned up tonight and send it before you're in tomorrow." |
+| Partner | witty, flirty, affectionate, a little teasing | "Sleep early — see you in my dreams. Miss me tomorrow." |
+| Friend / colleague | casual, spoken, memes welcome | "Cool, see you at six 😄" |
+| Family | caring, patient, explicit | "Take your medicine — I'll grab fruit on the way home." |
+
+It also **imitates how you actually talk** using your own recent messages (word choice, sentence length,
+punctuation habits), so the result does not read like generic AI. It reads like you — just smoother.
+
+## Why it is safe to run
+
+- **Zero calls by default.** It sends nothing until you click a button; incoming messages only become context.
+  No network, no model call, no popup.
+- **It only screenshots its own window and OCRs it** — no hooking, no injection, no reading WeChat's database
+  or process memory. The same class of operation as a screen reader or a screen recorder.
+- **Frames never touch the disk.** Captured frames are numpy arrays in memory: never saved, logged or uploaded.
+- **No money-related UI elements.** Transfers and red packets are never touched, and the prompts forbid them.
+- **It never presses send on its own.** There is no automatic send path anywhere in the program.
+
+<details>
+<summary>How it differs from tools that read the chat database</summary>
+
+The capture method defines the risk surface: this project does not hook, inject, read WeChat's database,
+decrypt anything, or touch WeChat's process memory. It screenshots its own window and runs a local offline OCR
+(RapidOCR), keeping frames in memory — i.e. it takes the "screen reader" route and avoids the part where
+database-reading tools most often get into trouble. Full boundaries under [Privacy](#privacy).
+
+</details>
 
 ## Screenshots
 
@@ -53,23 +79,51 @@ When you want to reply:
 </tr>
 </table>
 
+## Download
+
+**Just download it — no Python, no source code.**
+
+👉 **[Latest release](https://github.com/Echosong/polish-wchat-windows/releases/latest)** —
+grab `polish-chat-vX.Y.Z.zip` (~140 MB), extract it to a permanent folder (keep the whole folder together,
+the exe needs the files next to it), then run `polish-chat.exe`.
+
+Requirements: Windows 10 1903+ / 11, a chat window, and one API key.
+
+> The exe is unsigned, so SmartScreen will complain once: "More info" → "Run anyway".
+> If that bothers you, build it yourself — see below.
+
+## What it is
+
+A small always-on-top window next to your WeChat window. It captures that window with Windows Graphics
+Capture and reads it with a local offline OCR engine, so it knows what the conversation looks like.
+When you want to reply:
+
+- **Generate** — writes 3 candidates from the recent conversation. The first one lands in the input box;
+  the other two become "swap" buttons.
+- **Or write your own**, then **Polish** — rewrites only *how* you say it, never *what* you say.
+  Skip the "look at it first" step with **Polish & Send** (`Ctrl+Shift+Enter`).
+- **Send** — pastes into the WeChat input box and presses Enter (`Ctrl+Enter` works too).
+
 The panel **docks itself to the right of the chat window** by default (it flips to the left if there is no
 room, **bottom-aligned with the chat window** so both input boxes sit on the same line; its height follows
 the content, so it stays short while collapsed). Drag it to detach; the pin in the title bar or the settings
 switch docks it again.
 
-## Download
+## What it deliberately does not do
 
-👉 **[Latest release](https://github.com/Echosong/polish-chat/releases/latest)**
-
-1. Download `polish-chat-vX.Y.Z.zip` (~140 MB) from the Releases page.
-2. Extract it to a permanent folder (keep the whole folder together — the exe needs the files next to it).
-3. Run `polish-chat.exe`.
-
-Requirements: Windows 10 1903+ / 11, a chat window, and one API key.
-
-> The exe is unsigned, so SmartScreen will complain: "More info" → "Run anyway". If that bothers you,
-> build it yourself (see below).
+- **No hooking, no injection, no reading WeChat's database or process memory.** It only screenshots its own
+  window and OCRs it — the same class of operation as a screen reader or a screen recorder.
+- **Frames never touch the disk.** Captured frames are numpy arrays in memory: never saved, never logged,
+  never uploaded.
+- **No money-related UI elements.** Transfers, red packets and payment screens are never touched, and the
+  prompts forbid those topics.
+- **It never presses send on its own.** There is no automatic send path anywhere in the program; the only
+  Enter press happens right after you click Send. The auto-draft switch only drafts — nothing can bypass this.
+- **No auto-reply by default.** Incoming messages are only recorded as context, entirely offline. No model
+  is called, no request is sent, until you click a button. Idle time costs exactly zero tokens. If you want
+  it to draft on its own, flip the "自动生成" switch in the input row (off by default, not persisted, back to
+  off after a restart): every incoming message gets a draft dropped into the input box; if you already have
+  text in there it leaves you alone.
 
 ## First run
 
@@ -106,9 +160,15 @@ message (one call returns all three candidates).
   input box; skipped while you have text in there. Off by default, not persisted (back to off after a
   restart), and **sending is always your click**.
 - **Generate** — 3 candidates, the first one is the model's own pick; swap between them in place.
-- **Polish** — makes your own draft flow naturally and match the conversation, without changing meaning,
+- **Polish** — makes your own draft flow naturally and match the conversation, **cleaning up typos and grammar
+  on the way**, and adjusting the tone to the relationship setting (rigorous and humble / playful and flirty /
+  casual — see [What problem it actually solves](#what-problem-it-actually-solves)) — without changing meaning,
   stance or information. The original stays under "undo".
-- **Send** — paste + Enter (`Ctrl+Enter` also works).
+- **Polish & Send** — the second-row button, or `Ctrl+Shift+Enter`. Write your message, hit it, and it is
+  polished and **sent straight away** — no "polish, look, send" three-step. The only difference from **Send**
+  is that one polish: use Send to send verbatim. If the polish step fails, nothing at all is sent and your
+  draft stays in the input box, ready to send as-is.
+- **Send** — paste verbatim + Enter (`Ctrl+Enter` also works).
 - **Follows the active conversation** — the conversation name is OCR'd from the panel header; history and
   context are kept per conversation. You can also browse another conversation (read-only: no generating or
   sending, to avoid posting into the wrong chat).
@@ -145,9 +205,11 @@ WGC captures the chat window (works for GPU-composited and occluded windows)
   → bubble colours split me / her; grey text (quotes, timestamps, speaker names, link cards) is filtered out
   → diffing against the previous frame avoids re-reporting messages that scrolled into view
   → all of the above is local; core/engine.py is only reached when you click a button
-       Generate → generate()  one model call → 3 candidates, first one into the box
-       Polish   → polish()    one model call → your sentence, rewritten (same meaning)
-       Send     → clipboard → focus the WeChat input box → Ctrl+V → Enter
+       Generate       → generate()  one model call → 3 candidates, first one into the box
+       Polish         → polish()    one model call → your sentence, rewritten (same meaning)
+       Polish & Send  → polish()    one model call → then the send path below with the result;
+                        if the polish fails, nothing is sent and the draft stays in the box
+       Send           → clipboard → focus the WeChat input box → Ctrl+V → Enter (verbatim, no model)
 ```
 
 Capture and OCR run in a separate process (one frame costs 250–800 ms, which would freeze the Qt UI).
@@ -208,8 +270,8 @@ Generation runs at temperature 1.2, polishing at 1.0 and returns a single rewrit
 ## Run from source
 
 ```bash
-git clone https://github.com/Echosong/polish-chat.git
-cd polish-chat
+git clone https://github.com/Echosong/polish-wchat-windows.git
+cd polish-wchat-windows
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -269,6 +331,17 @@ Release; manual runs only produce an artifact.
 | Thinking mode | Model thinks before writing: slower and pricier | `config.json` → `thinking` (off) |
 
 ## FAQ
+
+**What is the difference between "Send" and "Polish & Send"?**
+Only the one polish before sending. **Send** posts exactly what you typed — no rewrite, no model call,
+no waiting. **Polish & Send** treats your text as a draft, polishes it (typos, tone, conversation fit)
+and sends the result directly: one extra model call and a second or two. If the polish step fails,
+nothing is sent and your draft stays in the input box — hit Send to post it as-is.
+
+**Will Polish & Send change my meaning?**
+No. The polish prompt hard-codes "do not change the meaning, stance or information by a single word";
+it only touches wording, typos and punctuation habits, and may grow the text by at most ~20%.
+If you would rather check first, use **Polish** and look at the result before hitting Send — both paths exist.
 
 **Send only inserted a newline.**
 Your WeChat is configured to send with `Ctrl+Enter`. This tool presses Enter; it will not change your WeChat

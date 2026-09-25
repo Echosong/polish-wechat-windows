@@ -16,6 +16,10 @@ wechat_probe.png
 build/
 dist/
 *.spec.bak
+# 打包中间目录 / uv 缓存 / 根目录下的发布 zip
+.build-tmp/
+.uv-cache/
+/*.zip
 
 # 本机开发 Agent 的工作记忆，不进仓库
 .workbuddy/

@@ -24,7 +24,7 @@ from PySide6.QtGui import QFontDatabase  # noqa: E402
 from app import settings  # noqa: E402
 
 
-_STATES = ("ready", "typed", "loading", "error", "setup", "settings", "paused", "debug", "details")
+_STATES = ("ready", "typed", "sending", "loading", "error", "setup", "settings", "paused", "debug", "details")
 
 # 调试视图预览用的真微信截图（只读进内存，不改不存）；没有就退一张空画面
 _FRAME = Path("/private/tmp/claude-501/-Users-lpitiless-Documents-project-wechatjev"
@@ -191,7 +191,15 @@ def main() -> int:
             QTimer.singleShot(300, lambda: ov.sent(
                 True, f"演示模式：已模拟发送「{text}」；未操作微信。"))
 
-        ov = Overlay(on_generate=demo_generate, on_polish=demo_polish, on_send=demo_send)
+        def demo_polish_send(text, chat):
+            def polished():
+                ov.send_polished("六点我可以，先过去看看有没有位置，你慢慢来就行")
+                QTimer.singleShot(300, lambda: ov.sent(
+                    True, "演示模式：已模拟发送润色后的那版；未操作微信。"))
+            QTimer.singleShot(600, polished)
+
+        ov = Overlay(on_generate=demo_generate, on_polish=demo_polish, on_send=demo_send,
+                     on_polish_and_send=demo_polish_send)
         register_fallback_fonts(ov.app)
         if args.width or args.height:  # 试紧凑/矮窗口，看按钮会不会被挤掉
             ov.win.resize(args.width or ov.win.width(), args.height or ov.win.height())
@@ -219,6 +227,9 @@ def main() -> int:
             elif args.state == "typed":
                 ov.input.setPlainText(_TYPED)
                 ov.set_status("演示模式：自己写完点「润色」，只改怎么说、不改说什么。")
+            elif args.state == "sending":
+                ov.input.setPlainText(_TYPED)
+                ov._send_with_polish()  # 「润色并发送」：润好了直接发，不再等用户点第二次
             elif args.state == "settings":
                 ov.open_settings()
             elif args.state == "details":
@@ -226,7 +237,7 @@ def main() -> int:
                 ov.set_status("演示模式：会话详情展开后才有「对方最近说」和聊天记录。")
             else:
                 ov.set_replies(_REPLIES)
-                ov.set_update("9.9.9", "https://github.com/Echosong/polish-chat/releases/latest")
+                ov.set_update("9.9.9", "https://github.com/Echosong/polish-wchat-windows/releases/latest")
                 if args.state == "loading":
                     ov.set_busy(True, "正在结合上下文写回复…")
                 elif args.state == "error":
