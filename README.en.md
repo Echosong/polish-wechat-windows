@@ -26,16 +26,19 @@ When you want to reply:
 
 ## What it deliberately does not do
 
-- **No auto-reply.** Incoming messages are only recorded as context, entirely offline. No model is called,
-  no request is sent, until you click a button. Idle time costs exactly zero tokens.
+- **No auto-reply by default.** Incoming messages are only recorded as context, entirely offline. No model
+  is called, no request is sent, until you click a button. Idle time costs exactly zero tokens. If you want
+  it to draft on its own, flip the "自动生成" switch in the input row (off by default, not persisted, back to
+  off after a restart): every incoming message gets a draft dropped into the input box; if you already have
+  text in there it leaves you alone.
 - **No hooking, no injection, no reading WeChat's database or process memory.** It only screenshots its own
   window and OCRs it — the same class of operation as a screen reader or a screen recorder.
 - **Frames never touch the disk.** Captured frames are numpy arrays in memory: never saved, never logged,
   never uploaded.
 - **No money-related UI elements.** Transfers, red packets and payment screens are never touched, and the
   prompts forbid those topics.
-- **It never presses send on its own.** There is no automatic trigger anywhere in the program; the only
-  Enter press happens right after you click Send.
+- **It never presses send on its own.** There is no automatic send path anywhere in the program; the only
+  Enter press happens right after you click Send. The auto-draft switch only drafts — nothing can bypass this.
 
 ## Screenshots
 
@@ -45,14 +48,15 @@ When you want to reply:
 <td width="50%"><img src="docs/ui_settings.png" alt="Settings"></td>
 </tr>
 <tr>
-<td align="center">Persistent input box + generate / polish / send; the generated line is editable, with two alternates and an undo below</td>
+<td align="center">One line by default — the conversation title with its message count — plus the persistent input box and generate / polish / send; the generated line is editable, with two alternates and an undo below</td>
 <td align="center">Settings: relationship, speaking style, context length, group reply target, docking, model</td>
 </tr>
 </table>
 
 The panel **docks itself to the right of the chat window** by default (it flips to the left if there is no
-room, vertically aligned and matching the window height). Drag it to detach; the pin in the title bar or the
-settings switch docks it again.
+room, **bottom-aligned with the chat window** so both input boxes sit on the same line; its height follows
+the content, so it stays short while collapsed). Drag it to detach; the pin in the title bar or the settings
+switch docks it again.
 
 ## Download
 
@@ -86,14 +90,21 @@ redacted). Everything else lives in `config.json` next to the exe, so the whole 
 - Keep the chat window open and not minimized (it may be covered by other windows — capture still works).
 - The panel follows WeChat; the current conversation drives the context, and history is stored per
   conversation, so switching chats does not mix them up.
-- The capture switch in the title bar pauses reading entirely; the input box and buttons keep working.
+- Too lazy to click Generate? Flip the "自动生成" switch in the input row (off by default, back to off after
+  a restart) and every incoming message gets a draft waiting in the input box — you still press Send.
+- The capture switch (right side of the status line under the input box) pauses reading entirely; the input
+  box and buttons keep working.
 
-**Cost**: one model call per click on Generate or Polish. Ten minutes of silence is ten minutes of zero
-calls; watching without clicking calls nothing.
+**Cost**: by default, one model call per click on Generate or Polish. Ten minutes of silence is ten minutes of
+zero calls; watching without clicking calls nothing. With auto-draft on it becomes one call per incoming
+message (one call returns all three candidates).
 
 ## Features
 
-- **Manual only** — incoming messages are recorded, never analyzed automatically.
+- **Manual by default** — incoming messages are recorded, never analyzed automatically.
+- **Auto-draft (optional)** — flip the switch in the input row and every incoming message gets a draft in the
+  input box; skipped while you have text in there. Off by default, not persisted (back to off after a
+  restart), and **sending is always your click**.
 - **Generate** — 3 candidates, the first one is the model's own pick; swap between them in place.
 - **Polish** — makes your own draft flow naturally and match the conversation, without changing meaning,
   stance or information. The original stays under "undo".
@@ -104,11 +115,11 @@ calls; watching without clicking calls nothing.
 - **Group chats** — speaker names are fed to the model; an optional reply target makes every candidate
   address that person, and Send can prefix `@name ` (plain text).
 - **Docks next to the chat window**; drag to detach, pin to re-dock.
-- **Capture switch**, **live chat log**, **debug view** (draws the frame and every
+- **Capture switch**, **auto-draft switch**, **live chat log**, **debug view** (draws the frame and every
   recognition box in a separate window, in memory only), **auto-restore of a minimized chat window**.
   The chat log is collapsed by default: the home page shows one line — the conversation title with the
   number of messages recorded for it — and the arrow next to it expands "what they said last" plus the log
-  of exactly what OCR read.
+  of exactly what OCR read. The panel's height follows the content, so collapsing it leaves no dead space.
 - **Any model** — 12 providers plus custom base URLs, one key for all of them; thinking mode toggle;
   optional update check at startup.
 

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """父进程：只管界面和网络调用。截图 + OCR 在 app/worker.py 的子进程里跑，队列里收聊天记录。
 
-**不自动回复**：对方来新消息只记进上下文和聊天记录，不出网、不调模型。用户在悬浮框上点
-「生成回复」或「润色」才走一次模型，点「发送」才粘进微信并按一次回车。静默期零调用。
+**不自动发送**：点「发送」才粘进微信并按一次回车，整个程序只有这一处会真的发出去，没有开关。
+草稿默认也不自动写（对方来新消息只记账，不出网、不调模型，静默期零调用）；输入区那个
+「自动生成」开关打开后，对方一发新消息就自动起草一版填进输入框——发送仍然要用户自己按。
 上下文和聊天记录都按会话名（子进程 OCR 头部标题得来）分开存，切会话不串味。
 
     pip install rapidocr-onnxruntime numpy windows-capture PySide6-Fluent-Widgets
@@ -192,7 +193,7 @@ def check_update_bg():
 # ------------------------------------------------------------------ 主循环
 
 def drain():
-    """把子进程队列里攒的东西全收掉。新消息只记账，不触发任何模型调用。"""
+    """把子进程队列里攒的东西全收掉。新消息只记账；只有在「自动生成」开着、输入框还空着时才顺手起草一版。"""
     global child
     while True:
         try:
@@ -242,7 +243,11 @@ def drain():
                 chat["senders"].insert(0, name)
         ov.set_targets(title, chat["senders"], target_of(title))  # 显不显示这一行由悬浮窗按开关决定
         if title == ov.current_chat() and not state["busy"] and new[-1][0] == "her":
-            ov.set_status("对方刚发来消息，写点什么或者点「生成回复」", "idle")
+            if ov.auto_generate() and not ov.has_draft():  # 开着自动生成、输入框还空着，就起草一版
+                ov.set_busy(True, "对方刚发来消息，自动起草中…")
+                on_generate(title)
+            else:
+                ov.set_status("对方刚发来消息，写点什么或者点「生成回复」", "idle")
 
 
 def tick():
