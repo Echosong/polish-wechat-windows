@@ -24,7 +24,7 @@ from PySide6.QtGui import QFontDatabase  # noqa: E402
 from app import settings  # noqa: E402
 
 
-_STATES = ("ready", "typed", "loading", "error", "setup", "settings", "paused", "debug")
+_STATES = ("ready", "typed", "loading", "error", "setup", "settings", "paused", "debug", "details")
 
 # 调试视图预览用的真微信截图（只读进内存，不改不存）；没有就退一张空画面
 _FRAME = Path("/private/tmp/claude-501/-Users-lpitiless-Documents-project-wechatjev"
@@ -221,6 +221,9 @@ def main() -> int:
                 ov.set_status("演示模式：自己写完点「润色」，只改怎么说、不改说什么。")
             elif args.state == "settings":
                 ov.open_settings()
+            elif args.state == "details":
+                ov._toggle_details()  # 会话详情默认收着，这一档是「展开以后」的样子
+                ov.set_status("演示模式：会话详情展开后才有「对方最近说」和聊天记录。")
             else:
                 ov.set_replies(_REPLIES)
                 ov.set_update("9.9.9", "https://github.com/Echosong/polish-chat/releases/latest")

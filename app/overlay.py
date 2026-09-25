@@ -31,6 +31,7 @@ _LOG_LINES = 300
 _MUTED = "#68776f"
 _GREEN = "#18794e"
 _CHAT_GAP = 8      # 吸附时跟聊天窗口之间留的空隙
+_DETAIL_H = 560    # 铺开会话详情且没吸附时的目标高度（收起来时按内容高自适应，不用这个）
 # 界面上的名字就用这两个汉字；polish-chat 那个英文名只出现在文件名、exe、发布包和仓库名上
 _APP_NAME = "润色"
 _RELATIONSHIPS = [
@@ -236,6 +237,9 @@ class Overlay:
         self.targets = {}       # {会话名: ([发言人], 当前回复对象)}
         self._chat = ""         # 微信当前开着的会话
         self._shown = ""        # 界面上正在看的会话（浏览时和上面不一样）
+        self._details_open = False  # 会话详情（对方最近说 + 聊天记录）默认收着，首页只留标题那一行
+        self._feed_open = False     # 聊天记录自己还有一层展开，收起详情时它不单独露头
+        self._expanded_h = None     # 铺开时那个高：收起再展开要回到原来那个高度
         self._docked = settings.dock()
         self._rect = None       # 上次用过的聊天窗口位置，没变就不折腾
         self.win = _MainWindow(self._relayout)
@@ -251,6 +255,7 @@ class Overlay:
         outer.setContentsMargins(1, 1, 1, 1)
         outer.setSpacing(0)
         header = _TitleBar(self.win, on_drag=self._undock)
+        self.header = header  # 算窗口高度时要问它有多高
         title = QHBoxLayout(header)
         title.setContentsMargins(18, 12, 10, 10)
         title.setSpacing(8)
@@ -262,14 +267,6 @@ class Overlay:
         self.subtitle.setWordWrap(False)  # 窄窗口里别让版本号把标题撑开
         self.subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
         title.addWidget(self.subtitle, 1)
-        self.captureSwitch = SwitchButton(header)
-        self.captureSwitch.setOnText("采集中")
-        self.captureSwitch.setOffText("已暂停")
-        self.captureSwitch.setToolTip("开启或暂停采集")
-        self.captureSwitch.setAccessibleName("开启或暂停采集")
-        self.captureSwitch.setChecked(True)
-        self.captureSwitch.checkedChanged.connect(self._capture_toggled)
-        title.addWidget(self.captureSwitch)
         self.dockButton = TransparentToolButton(FIF.PIN, header)
         self.dockButton.setFixedSize(32, 32)
         self.dockButton.setCheckable(True)
@@ -307,18 +304,21 @@ class Overlay:
         self._build_settings()
         self._build_composer()  # 输入框和三个按钮钉在窗口底部，不跟首页一起滚走
         outer.addWidget(self.composer)
-        footer = QHBoxLayout()
+        self.footer = QWidget(self.win)
+        footer = QHBoxLayout(self.footer)
         footer.setContentsMargins(20, 9, 8, 8)
         footer.addWidget(_label(f"手动生成 · 发送前请过目 · v{VERSION}", 11, _MUTED), 1)
-        grip = QSizeGrip(self.win)
+        grip = QSizeGrip(self.footer)
         grip.setFixedSize(16, 16)
         footer.addWidget(grip, 0, Qt.AlignBottom)
-        outer.addLayout(footer)
+        outer.addWidget(self.footer)
         screen = self.app.primaryScreen().availableGeometry()
-        self.win.setMinimumHeight(min(420, screen.height() - 32))  # 输入框 + 三个按钮 + 会话信息，再矮就挤没了
-        self.win.resize(min(420, screen.width() - 32), min(540, screen.height() - 48))
-        self.win.move(screen.right() - self.win.width() - 20, screen.top() + 24)
-        self._relayout(self.win.width(), self.win.height())  # resizeEvent 补不到构造时这一次
+        width = min(420, screen.width() - 32)
+        height = min(self._fit_height(), screen.height() - 48)  # 默认收着，窗口就开成内容高
+        self.win.setMinimumHeight(height)  # 再矮就把输入框和三个按钮挤没了
+        self.win.resize(width, height)
+        self.win.move(screen.right() - width - 20, screen.top() + 24)
+        self._relayout(width, height)  # resizeEvent 补不到构造时这一次
         self._sendShortcuts()
         self._apply_capture_text(self.captureSwitch.isChecked())
         self.win.show()
@@ -354,6 +354,8 @@ class Overlay:
             self._compact = compact
             self._apply_compact(compact)
         self.feed.setFixedHeight(max(100, min(240, int(h * 0.25))))
+        if self._details_open and h > self._fit_height():
+            self._expanded_h = h  # 用户自己拉过的高：收起来再展开还用这个，不被挤回去
 
     def _apply_compact(self, compact):
         """紧凑/常规两套间距和可见性；断点没变时不会被调用。"""
@@ -366,6 +368,31 @@ class Overlay:
         for layout in self._pageLayouts:
             layout.setContentsMargins(*margins)
         self._render_alts()  # 窄了按钮上的字要更短，重排一次
+
+    # ---------------------------------------------------------------- 窗口高度
+
+    def _work_area(self):
+        """窗口现在在哪块屏上，就按哪块屏的可用区域算。"""
+        screen = QGuiApplication.screenAt(self.win.frameGeometry().center()) or self.app.primaryScreen()
+        return screen.availableGeometry()
+
+    def _fit_height(self):
+        """把看得见的那几块高度加起来：详情收着时窗口就缩到刚好，不留一大片空白。"""
+        height = self.header.sizeHint().height() + self.footer.sizeHint().height()
+        if not self.updateBar.isHidden():
+            height += self.updateBar.height()
+        height += self.home.widget().sizeHint().height() + self.composer.sizeHint().height()
+        margins = self.win.layout().contentsMargins()
+        return height + margins.top() + margins.bottom()
+
+    def _apply_height(self):
+        """按当前状态定窗口高度：收着 = 内容多高就多高；铺开 = 上次那个高，至少装得下详情。"""
+        work = self._work_area()
+        if self._details_open:
+            height = max(self._expanded_h or _DETAIL_H, self._fit_height())
+        else:
+            height = self._fit_height()
+        self.win.resize(self.win.width(), max(self.win.minimumHeight(), min(height, work.height())))
 
     # ---------------------------------------------------------------- 首页
 
@@ -382,10 +409,15 @@ class Overlay:
         self.chatBox.setToolTip("聊天窗口切到哪个会话这里就跟到哪个；也可以自己选一个，只读它的上下文")
         self.chatBox.currentIndexChanged.connect(self._on_chat_selected)
         chat_row.addWidget(self.chatBox, 1)
+        self.countLabel = _label("", 11, _MUTED)  # 条数跟在会话标题后面：收着时也知道记了多少条
+        self.countLabel.setWordWrap(False)
+        chat_row.addWidget(self.countLabel)
         self.chatFollow = _label("", 11, _MUTED)
         self.chatFollow.setFixedWidth(52)
         self.chatFollow.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         chat_row.addWidget(self.chatFollow)
+        self.detailsButton = _tool(FIF.CHEVRON_RIGHT_MED, "展开会话详情", self._toggle_details)
+        chat_row.addWidget(self.detailsButton)
         body.addLayout(chat_row)
         self.targetRow = QWidget()  # 只有开了「群聊指定回复对象」且这个会话是群聊才露出来
         target_row = QHBoxLayout(self.targetRow)
@@ -428,7 +460,8 @@ class Overlay:
         self.feed.setFixedHeight(160)
         self.feed.hide()
         body.addWidget(self.feed)
-        self._history_title()
+        self._render_details()  # 默认收起：首页只剩「当前会话 + 条数」这一行
+        self._render_count()
         body.addStretch(1)
 
     def _build_composer(self):
@@ -472,8 +505,19 @@ class Overlay:
         self.altLayout = alt_row
         self.altRow.hide()
         box.addWidget(self.altRow)
+        status_row = QHBoxLayout()  # 状态行：左边一句状态，右边采集开关（标题栏只放标题，别挤它）
+        status_row.setSpacing(8)
         self.status = _label("", 12, _MUTED)
-        box.addWidget(self.status)
+        status_row.addWidget(self.status, 1)
+        self.captureSwitch = SwitchButton(self.composer)
+        self.captureSwitch.setOnText("采集中")
+        self.captureSwitch.setOffText("已暂停")
+        self.captureSwitch.setToolTip("开启或暂停采集：暂停后不再读聊天内容")
+        self.captureSwitch.setAccessibleName("开启或暂停采集")
+        self.captureSwitch.setChecked(True)
+        self.captureSwitch.checkedChanged.connect(self._capture_toggled)
+        status_row.addWidget(self.captureSwitch)
+        box.addLayout(status_row)
         self.progress = IndeterminateProgressBar()
         self.progress.setFixedHeight(3)
         self.progress.hide()
@@ -1042,8 +1086,9 @@ class Overlay:
         if her:
             self._show_latest(her)
         else:
-            self.context.hide()
-        self._history_title()
+            self.latest.setText("")
+            self._render_latest()
+        self._render_count()
         self._follow_text()
         self._render_targets()
         if self._chat and self._shown != self._chat:
@@ -1125,7 +1170,7 @@ class Overlay:
     def dock_to(self, rect):
         """rect = 聊天窗口的 (left, top, right, bottom)，物理像素；吸附开着才动。
 
-        窗口没动就不折腾；右边放不下翻到左边，纵向跟聊天窗口对齐，高度取一样高（够高够矮都夹一下）。
+        窗口没动就不折腾；右边放不下翻到左边，纵向跟聊天窗口对齐；高度按收/放两种状态各给一个。
         """
         if not self._docked or not rect or rect == self._rect:
             return
@@ -1136,7 +1181,7 @@ class Overlay:
         screen = QGuiApplication.screenAt(area.center()) or self.app.primaryScreen()
         work = screen.availableGeometry()
         width = min(self.win.width(), max(320, work.width() // 2))
-        height = max(420, min(area.height(), work.height()))  # 再矮也得装得下输入框和三个按钮
+        height = self._dock_height(area, work)
         x = area.right() + _CHAT_GAP
         if x + width > work.right():
             x = area.left() - width - _CHAT_GAP  # 右边放不下就翻到左边
@@ -1144,6 +1189,12 @@ class Overlay:
         y = max(work.top(), min(area.top(), work.bottom() - height))
         self.win.resize(width, height)
         self.win.move(x, y)
+
+    def _dock_height(self, area, work):
+        """吸附时的高度：详情收着就缩成内容高（干爽）；铺开时跟聊天窗口一样高，够高够矮都夹一下。"""
+        if not self._details_open:
+            return min(self._fit_height(), work.height())
+        return max(420, min(area.height(), work.height()))  # 再矮也得装得下输入框和三个按钮
 
     def _logical(self, rect):
         """Win32 报的是物理像素，Qt 摆窗口用的是逻辑像素：按那块屏的比例换一下。"""
@@ -1166,6 +1217,7 @@ class Overlay:
         self.updateLabel.setText(f"有新版本 v{latest}")
         self.updateLink.setUrl(url)
         self.updateBar.show()
+        self._apply_height()  # 多出来一行提示，收着的时候窗口跟着长高一点（tick 在主线程里调）
 
     def set_capture(self, on, reason=""):
         """父进程回报的状态：只改界面，不回调（不然和父进程来回打架）。reason 为空用默认说明。"""
@@ -1224,14 +1276,44 @@ class Overlay:
         setCustomStyleSheet(self.status, qss, qss)
         self.status.setText(f"{markers.get(kind, '●')}  {text}")
 
-    def _toggle_history(self):
-        self.feed.setVisible(self.feed.isHidden())
-        self._history_title()
+    def _toggle_details(self):
+        """会话详情整块的开关：默认收着，点会话标题后面那个箭头才铺开下级几节。"""
+        if self._details_open:
+            self._expanded_h = max(self._expanded_h or 0, self.win.height())  # 记下铺开时那个高
+        self._details_open = not self._details_open
+        self._render_details()
+        self._apply_height()  # 收着就把窗口一起缩掉，别留一大片空
 
-    def _history_title(self):
-        action = "展开" if self.feed.isHidden() else "收起"
+    def _toggle_history(self):
+        self._feed_open = not self._feed_open
+        self._render_history()
+
+    def _render_details(self):
+        """会话详情整块的显隐：收着就只剩上面那一行会话标题（+ 条数），铺开才有下级几节。"""
+        expanded = self._details_open
+        self.detailsButton.setIcon(FIF.CHEVRON_DOWN_MED if expanded else FIF.CHEVRON_RIGHT_MED)
+        tip = "收起会话详情" if expanded else "展开会话详情：对方最近说、聊天记录"
+        self.detailsButton.setToolTip(tip)
+        self.detailsButton.setAccessibleName(tip)
+        self.historyButton.setVisible(expanded)
+        self._render_latest()
+        self._render_history()
+
+    def _render_latest(self):
+        """「对方最近说」：详情收着时、或这个会话还没有对方的消息，都不露头。"""
+        self.context.setVisible(self._details_open and bool(self.latest.text()))
+
+    def _render_history(self):
+        """聊天记录比详情还低一级：详情收着时它也跟着藏，别自己单独冒出来。"""
+        self.feed.setVisible(self._details_open and self._feed_open)
+        self.historyButton.setText(("收起" if self._feed_open else "展开") + "聊天记录")
+
+    def _render_count(self):
+        """条数挂在会话标题后面，收着的时候也能看出这个会话记了多少条。"""
         count = self.counts.get(self._shown, 0)
-        self.historyButton.setText(f"{action}聊天记录" + (f" · {count}" if count else ""))
+        self.countLabel.setText(f"{count} 条" if count else "")
+        self.countLabel.setToolTip(f"这个会话已经记下 {count} 条消息" if count else "")
+        self.countLabel.setVisible(bool(count))
 
     def log(self, line):
         """采集状态行：只进正在看的那个会话，不按会话存。"""
@@ -1258,12 +1340,12 @@ class Overlay:
         self.log(lines[-1])
         if who == "her":
             self._show_latest(text)
-        self._history_title()
+        self._render_count()
 
     def _show_latest(self, text):
         self.latest.setText(text if len(text) <= 120 else text[:120] + "…")
         self.latest.setToolTip(text)
-        self.context.show()
+        self._render_latest()
 
     def after(self, ms, fn):
         QTimer.singleShot(ms, fn)

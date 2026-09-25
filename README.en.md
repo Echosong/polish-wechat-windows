@@ -104,8 +104,11 @@ calls; watching without clicking calls nothing.
 - **Group chats** — speaker names are fed to the model; an optional reply target makes every candidate
   address that person, and Send can prefix `@name ` (plain text).
 - **Docks next to the chat window**; drag to detach, pin to re-dock.
-- **Capture switch**, **live chat log** (see exactly what OCR read), **debug view** (draws the frame and every
+- **Capture switch**, **live chat log**, **debug view** (draws the frame and every
   recognition box in a separate window, in memory only), **auto-restore of a minimized chat window**.
+  The chat log is collapsed by default: the home page shows one line — the conversation title with the
+  number of messages recorded for it — and the arrow next to it expands "what they said last" plus the log
+  of exactly what OCR read.
 - **Any model** — 12 providers plus custom base URLs, one key for all of them; thinking mode toggle;
   optional update check at startup.
 
