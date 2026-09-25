@@ -1,6 +1,6 @@
 <div align="center">
 
-# 润色 · polish-wchat-windows
+# 润色 · polish-wechat-windows
 
 **聊天窗口旁边的 AI 回复输入框：发出去之前，先帮你改一遍。**
 顺手修错别字，并按「你在跟谁说话」调整口气——对领导严谨谦逊，对爱人来点风趣暧昧，对朋友随意自然。
@@ -8,14 +8,14 @@
 [![Windows 10 1903+ / 11](https://img.shields.io/badge/Windows-10%201903%2B%20%2F%2011-0078D6?logo=windows&logoColor=white)](#环境要求)
 [![Python 3.10–3.12](https://img.shields.io/badge/Python-3.10%E2%80%933.12-3776AB?logo=python&logoColor=white)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/Echosong/polish-wchat-windows?label=release&color=blue)](https://github.com/Echosong/polish-wchat-windows/releases/latest)
+[![Release](https://img.shields.io/github/v/release/Echosong/polish-wechat-windows?label=release&color=blue)](https://github.com/Echosong/polish-wechat-windows/releases/latest)
 
-**[⬇ 下载最新版](https://github.com/Echosong/polish-wchat-windows/releases/latest)** · [English →](README.en.md)
+**[⬇ 下载最新版](https://github.com/Echosong/polish-wechat-windows/releases/latest)** · [English →](README.en.md)
 
 </div>
 
 > 界面上的名字是**「润色」**（标题栏和窗口标题都是这两个汉字，界面全中文）；
-> `polish-wchat-windows` 只用在文件名上：exe `polish-chat.exe`、发布包 `polish-chat-vX.Y.Z.zip`、仓库名。
+> `polish-wechat-windows` 只用在文件名上：exe `polish-chat.exe`、发布包 `polish-chat-vX.Y.Z.zip`、仓库名。
 
 ---
 
@@ -81,7 +81,7 @@
 
 **普通使用直接下载，不用装 Python、不用碰源码。**
 
-👉 **[下载最新版](https://github.com/Echosong/polish-wchat-windows/releases/latest)** ——
+👉 **[下载最新版](https://github.com/Echosong/polish-wechat-windows/releases/latest)** ——
 在 Releases 页拿 `polish-chat-vX.Y.Z.zip`（约 140 MB），解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件），双击 `polish-chat.exe`。
 
 要求：Windows 10 1903+ / 11，聊天窗口开着，一把 API key。
@@ -281,8 +281,8 @@ OpenCode Go 的列表只留走 `/chat/completions` 的模型；MiniMax、Qwen �
 ## 源码运行（开发者）
 
 ```bash
-git clone https://github.com/Echosong/polish-wchat-windows.git
-cd polish-wchat-windows
+git clone https://github.com/Echosong/polish-wechat-windows.git
+cd polish-wechat-windows
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt

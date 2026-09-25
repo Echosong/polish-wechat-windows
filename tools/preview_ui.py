@@ -237,7 +237,7 @@ def main() -> int:
                 ov.set_status("演示模式：会话详情展开后才有「对方最近说」和聊天记录。")
             else:
                 ov.set_replies(_REPLIES)
-                ov.set_update("9.9.9", "https://github.com/Echosong/polish-wchat-windows/releases/latest")
+                ov.set_update("9.9.9", "https://github.com/Echosong/polish-wechat-windows/releases/latest")
                 if args.state == "loading":
                     ov.set_busy(True, "正在结合上下文写回复…")
                 elif args.state == "error":

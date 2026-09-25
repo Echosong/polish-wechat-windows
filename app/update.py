@@ -6,7 +6,7 @@ import json
 import urllib.request
 
 # 新版本只看本仓库的 Release（私有部署想换成自己的镜像，改这一行就行）
-_API = "https://api.github.com/repos/Echosong/polish-wchat-windows/releases/latest"
+_API = "https://api.github.com/repos/Echosong/polish-wechat-windows/releases/latest"
 
 
 def parse_version(v: str) -> tuple[int, ...] | None:

@@ -1,4 +1,4 @@
-# 润色 · polish-wchat-windows
+# 润色 · polish-wechat-windows
 
 **An AI reply box next to your chat window: it fixes what you typed before you send it.**
 Typos get cleaned up, and the tone adapts to *who* you are talking to — formal and humble with your boss,
@@ -7,12 +7,12 @@ playful and flirty with your partner, casual with friends.
 [![Windows 10 1903+ / 11](https://img.shields.io/badge/Windows-10%201903%2B%20%2F%2011-0078D6?logo=windows&logoColor=white)](#requirements)
 [![Python 3.10–3.12](https://img.shields.io/badge/Python-3.10%E2%80%933.12-3776AB?logo=python&logoColor=white)](#requirements)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/Echosong/polish-wchat-windows?label=release&color=blue)](https://github.com/Echosong/polish-wchat-windows/releases/latest)
+[![Release](https://img.shields.io/github/v/release/Echosong/polish-wechat-windows?label=release&color=blue)](https://github.com/Echosong/polish-wechat-windows/releases/latest)
 
-**[⬇ Download the latest release](https://github.com/Echosong/polish-wchat-windows/releases/latest)** · [中文说明 →](README.md)
+**[⬇ Download the latest release](https://github.com/Echosong/polish-wechat-windows/releases/latest)** · [中文说明 →](README.md)
 
 > The user interface is entirely in Chinese and the app calls itself **润色** ("polish");
-> `polish-wchat-windows` is only the project, file and repository name (`polish-chat.exe`, `polish-chat-vX.Y.Z.zip`).
+> `polish-wechat-windows` is only the project, file and repository name (`polish-chat.exe`, `polish-chat-vX.Y.Z.zip`).
 
 ---
 
@@ -83,7 +83,7 @@ database-reading tools most often get into trouble. Full boundaries under [Priva
 
 **Just download it — no Python, no source code.**
 
-👉 **[Latest release](https://github.com/Echosong/polish-wchat-windows/releases/latest)** —
+👉 **[Latest release](https://github.com/Echosong/polish-wechat-windows/releases/latest)** —
 grab `polish-chat-vX.Y.Z.zip` (~140 MB), extract it to a permanent folder (keep the whole folder together,
 the exe needs the files next to it), then run `polish-chat.exe`.
 
@@ -270,8 +270,8 @@ Generation runs at temperature 1.2, polishing at 1.0 and returns a single rewrit
 ## Run from source
 
 ```bash
-git clone https://github.com/Echosong/polish-wchat-windows.git
-cd polish-wchat-windows
+git clone https://github.com/Echosong/polish-wechat-windows.git
+cd polish-wechat-windows
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt

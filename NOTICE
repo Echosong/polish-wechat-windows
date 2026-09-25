@@ -1,9 +1,9 @@
 polish-chat（界面显示名：润色）
 Copyright (c) 2026 Echosong
-https://github.com/Echosong/polish-wchat-windows
+https://github.com/Echosong/polish-wechat-windows
 
 MIT 许可（见 LICENSE）。分发或商用请保留 LICENSE 与这份 NOTICE，并在产品的「关于」页、说明文档
-或发布页注明出处。推荐写法：基于 polish-chat（https://github.com/Echosong/polish-wchat-windows）二次开发。
+或发布页注明出处。推荐写法：基于 polish-chat（https://github.com/Echosong/polish-wechat-windows）二次开发。
 
 ## 出处
 
@@ -45,7 +45,7 @@ the jev-chat contributors 所有。
 This project's own code is licensed under the MIT License (see LICENSE).
 When you distribute or commercialize this software or a derivative, keep the
 LICENSE and this NOTICE, and credit the source, e.g.
-"Based on polish-chat (https://github.com/Echosong/polish-wchat-windows)".
+"Based on polish-chat (https://github.com/Echosong/polish-wechat-windows)".
 
 polish-chat is derived from jev-chat-windows
 (https://github.com/jev-chat/jev-chat-windows, MIT, Copyright (c) 2026

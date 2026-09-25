@@ -1,6 +1,6 @@
 # polish-chat — 接续说明
 
-仓库 `Echosong/polish-wchat-windows`，**界面上显示的名字是「润色」**（标题栏、窗口标题都用这两个汉字；
+仓库 `Echosong/polish-wechat-windows`，**界面上显示的名字是「润色」**（标题栏、窗口标题都用这两个汉字；
 `polish-chat` 只用在文件名、exe、发布包和仓库名上）。这份文档给接手改代码的人看：架构、硬约束、以及为什么这么选。
 
 > 前身是 `jev-chat-windows`（作者自己维护的 Windows 版，内置 Jev 判断内核 + 三段式自动分析）。
