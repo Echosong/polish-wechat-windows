@@ -33,14 +33,13 @@ _CHAT_GAP = 8      # 吸附时跟聊天窗口之间留的空隙
 _INPUT_H = 96      # 输入框高度（默认那种一条的写长句子太挤）
 _BUTTON_H = 38     # 生成回复 / 润色 / 润色并发送 / 发送 四个按钮的高度（比控件默认高一档）
 _FEED_H = 180      # 记录区高度：窗口高度跟着内容走，所以这里给个定值，别让它俩互相追着变
-_SETTINGS_H = 640  # 设置页给这么高的窗口（表单长，再高屏幕也放不下，里面本来就有滚动条）
 # 界面上的名字就用这两个汉字；polish-chat 那个英文名只出现在文件名、exe、发布包和仓库名上
 _APP_NAME = "润色"
 _RELATIONSHIPS = [
     ("恋人", "romantic partners"), ("朋友", "friends"), ("同事", "colleagues"),
     ("家人", "family"), ("自定义", None),
 ]
-_FOLLOW_GLOBAL = "跟随全局"  # 「按好友设置」里每一项的「不单独设，跟上面那套全局一样」
+_FOLLOW_GLOBAL = "跟随全局"  # 「单个好友设置」页里每一项的「不单独设，跟全局那套一样」
 
 
 class _FitCombo(ComboBox):
@@ -201,6 +200,7 @@ class Overlay:
         self._undo = None       # 上一次被覆盖掉的内容，「还原」用
         self._compact = None    # 断点模式：None 保证 _relayout 第一次调用必定生效
         self._pageLayouts = []
+        self._scrollPages = []  # 每个滚动页（首页 / 单个好友设置 / 设置），算窗口高度时要用
         self._hintLabels = []
         self._altButtons = []
         self.feeds = {}         # {会话名: [排好版的记录]}
@@ -212,6 +212,7 @@ class Overlay:
         self._details_open = False  # 会话详情（对方最近说 + 聊天记录）默认收着，首页只留标题那一行
         self._feed_open = False     # 聊天记录自己还有一层展开，收起详情时它不单独露头
         self._expanded_h = None     # 铺开时那个高：收起再展开要回到原来那个高度
+        self._config_h = None       # 配置页（设置 / 单个好友）量好的窗口高，吸附时直接用
         self._docked = settings.dock()
         self._pending_send = None  # 正在等润色结果的那段原文：润色回来就直接发，不用再点一次
         self._rect = None       # 上次用过的聊天窗口位置，没变就不折腾
@@ -274,6 +275,7 @@ class Overlay:
         self.pages = QStackedWidget(self.win)
         outer.addWidget(self.pages, 1)
         self._build_home()
+        self._build_friend_page()  # 单个好友的小配置页：独立一页，别跟「设置」那堆全局项混在一起
         self._build_settings()
         self._build_composer()  # 输入框和三个按钮钉在窗口底部，不跟首页一起滚走
         outer.addWidget(self.composer)
@@ -321,12 +323,17 @@ class Overlay:
         content = QWidget()
         content.setObjectName("pageContent")
         content.setStyleSheet("QWidget#pageContent { background: transparent; }")
+        # 页内容想要多高就多高（AlignTop），别被 ScrollArea 拉长：配置页的窗口高度是照它算的。
+        # 这条很重要——纵向设成 Fixed 以后「视口高 + 滚动条最大偏移」才恒等于内容真高；
+        # 不设的话内容会被拉到铺满视口，好友那页就会量出「800 高」，窗口白撑到满屏。
+        content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(20, 8, 20, 12)
         layout.setSpacing(12)
         scroll.setWidget(content)
         self.pages.addWidget(scroll)
         self._pageLayouts.append(layout)
+        self._scrollPages.append(scroll)
         return scroll, layout
 
     def _relayout(self, w, h):
@@ -565,7 +572,11 @@ class Overlay:
         heading.addWidget(_tool(FIF.RETURN, "返回", self._back_home))
         heading.addWidget(_label("设置", 23, "#24382d", True), 1)
         body.addLayout(heading)
-        body.addWidget(_label("调整关系背景和口吻，配置生成/润色用的那个模型。", 13, _MUTED))
+        body.addWidget(_label(
+            "这里改的都是全局的：关系背景和口吻、参考上下文、吸附、更新，以及生成/润色用的那个模型。"
+            "只给某一个好友单独设一套，点首页会话那一行最右边的小按钮，在它自己那页里改。",
+            13, _MUTED))
+        self._build_models(body)  # 模型那一组（来源 / 地址 / 密钥 / 模型 / 思考模式）
         preference = _Surface()
         box = QVBoxLayout(preference)
         box.setContentsMargins(16, 16, 16, 18)
@@ -651,13 +662,42 @@ class Overlay:
             "红 = 当成图片丢掉、黄 = 小字丢掉。只在内存里画，不存图。"
         ))
         body.addWidget(preference)
+        self.settingsFeedback = _label("", 13, _GREEN)
+        self.settingsFeedback.hide()
+        body.addWidget(self.settingsFeedback)
+        actions = QHBoxLayout()
+        back = PushButton("返回")
+        back.clicked.connect(self._back_home)
+        actions.addWidget(back)
+        actions.addStretch(1)
+        self.saveButton = PrimaryPushButton("保存设置")
+        self.saveButton.clicked.connect(self._save)
+        actions.addWidget(self.saveButton)
+        body.addLayout(actions)
+        body.addWidget(self._hint("保存后立刻用于下一次生成和润色。"))
+        body.addStretch(1)
+        self._load_settings()
 
-        # 按好友：上面那一套是全局的，这里给单个会话（好友 / 群名）单独存一套，存下就跟着 TA 走
+    def _build_friend_page(self):
+        """单个好友（会话）的独立配置页：只有「关系 / 说话风格 / 参考上下文」三项。
+
+        以前这一组塞在「设置」页最下面，跟全局回复偏好、吸附、模型那些挤在一条滚动里，
+        进设置页得往下拉一格才找得到，看着也像是在改全局。现在它是**单独一页**，
+        首页会话那一行的小按钮直接进这儿，跟全局设置互不相干，字段只留这三个。
+        """
+        self.friendPage, body = self._scroll_page()
+        heading = QHBoxLayout()
+        heading.addWidget(_tool(FIF.RETURN, "返回", self._back_home))
+        heading.addWidget(_label("单个好友设置", 23, "#24382d", True), 1)
+        body.addLayout(heading)
+        body.addWidget(_label(
+            "只给 TA 一个人用：存下以后，下次跟前会话标题这个名字聊（单聊、群聊都算）就自动用这一套。",
+            13, _MUTED))
+
         self.friendsSurface = _Surface()
         box = QVBoxLayout(self.friendsSurface)
         box.setContentsMargins(16, 16, 16, 18)
         box.setSpacing(12)
-        box.addWidget(_label("按好友设置", 16, "#304c3c", True))
         friend_label = _label("好友 / 会话名", 13)
         box.addWidget(friend_label)
         self.friendBox = EditableComboBox()  # 能选已经识别到的会话，也能手打一个还没聊到的名字
@@ -667,9 +707,6 @@ class Overlay:
         friend_label.setBuddy(self.friendBox)
         self.friendBox.currentTextChanged.connect(self._load_friend)  # 选一个 / 打一个字都立刻读出来
         box.addWidget(self.friendBox)
-        box.addWidget(self._hint(
-            "存下以后，下次跟 TA 聊（单聊、群聊都算）自动用这一套。这里没填的项，仍然跟着上面那套全局设置走。"
-        ))
         friend_relation_label = _label("关系 / 口吻", 13)
         box.addWidget(friend_relation_label)
         self.friendRelationBox = ComboBox()
@@ -716,6 +753,14 @@ class Overlay:
         box.addWidget(self.friendFeedback)
         body.addWidget(self.friendsSurface)
 
+        body.addWidget(self._hint(
+            "这三项没填（或选「跟随全局」）的，就跟「设置」里那套全局回复偏好走；"
+            "全局的关系背景、说话风格、参考上下文在标题栏那个齿轮里改。"
+        ))
+        body.addStretch(1)
+
+    def _build_models(self, body):
+        """「设置」页里的模型那一组（写回复和润色都走这一家）。"""
         models = _Surface()
         box = QVBoxLayout(models)
         box.setContentsMargins(16, 16, 16, 18)
@@ -741,22 +786,6 @@ class Overlay:
             "只有 " + " / ".join(providers.THINKING) + " 认这个开关。"
         ))
         body.addWidget(models)
-        self.settingsFeedback = _label("", 13, _GREEN)
-        self.settingsFeedback.hide()
-        body.addWidget(self.settingsFeedback)
-        actions = QHBoxLayout()
-        back = PushButton("返回")
-        back.clicked.connect(self._back_home)
-        actions.addWidget(back)
-        actions.addStretch(1)
-        self.saveButton = PrimaryPushButton("保存设置")
-        self.saveButton.clicked.connect(self._save)
-        actions.addWidget(self.saveButton)
-        body.addLayout(actions)
-        body.addWidget(self._hint("保存后立刻用于下一次生成和润色。"))
-        body.addStretch(1)
-        self._refresh_friends()  # 好友那一栏先按「存过的 + 这次识别到的会话」填一遍
-        self._load_settings()
 
     def _hint(self, text):
         """设置页字段下面的灰字说明：记下来，紧凑模式一起隐藏。"""
@@ -980,7 +1009,7 @@ class Overlay:
         self.settingsFeedback.setText(text)
         self.settingsFeedback.show()
 
-    # ------------------------------------------------------------ 按好友设置
+    # ------------------------------------------------ 单个好友设置（独立页，见 _build_friend_page）
 
     def _refresh_friends(self, select=""):
         """好友下拉框：存过单独设置的 + 这次识别到的会话，去重后填进去。
@@ -1064,32 +1093,64 @@ class Overlay:
         self._friend_feedback(f"「{name}」的单独设置已删掉，改回全局那套。")
 
     def _open_friend_settings(self):
-        """首页会话那一行的「口吻」小按钮：进设置页，直接停在这个会话上。"""
-        self.open_settings()
-        self.friendBox.setFocus()  # 聚焦顺带把滚动条带到这一块
+        """首页会话那一行的「口吻」小按钮：直接进「单个好友设置」这一页，默认停在这个会话上。
+
+        注意别拐进「设置」页——那一页全是全局项（关系背景、吸附、模型），
+        好友这套是单给人存的，跟它混在一起看就像在改全局（用户明确要求分开）。
+        """
+        self.composer.hide()  # 先收输入区：量高度时它还在，滚动区就被挤扁、量出来的那一圈会虚大
+        self._grow_for_settings(self.friendPage)  # 顺手切到这一页，再按它自己的内容量高度
+        self.friendPage.verticalScrollBar().setValue(0)  # 每次都从头看，别留着上次滚过半截的位置
+        self.settingsButton.setEnabled(False)
+        self._refresh_friends(self._shown or self._chat)  # 下拉框默认停在这个会话上
+        self.friendBox.setFocus()  # 光标直接落在这儿，想改谁就改谁
 
     def open_settings(self):
         if self.pages.currentWidget() != self.settingsPage:
             self._load_settings()
-        self._refresh_friends(self._shown or self._chat)  # 好友那一栏默认停在这个会话上
-        self.pages.setCurrentWidget(self.settingsPage)
-        self.composer.hide()  # 设置页不需要输入框，别挤着看
+        self.composer.hide()  # 先收输入区，理由同上
+        self._grow_for_settings(self.settingsPage)  # 顺手切到这一页，再按它自己的内容量高度
+        self.settingsPage.verticalScrollBar().setValue(0)
         self.settingsButton.setEnabled(False)
-        self._grow_for_settings()  # 首页收得很矮，进设置页要放开一点，不然表单挤在一条缝里
         (self.relationshipBox if settings.has_key() else self.draft.keyEdit).setFocus()
 
-    def _grow_for_settings(self):
-        """设置页：把窗口放到 _SETTINGS_H（屏幕放不下就按屏幕），只长不缩。"""
+    def _grow_for_settings(self, page=None):
+        """进配置页：窗口高度按**这一页内容**算（首页那个矮高和别的页都不掺进来）。
+
+        先切页再量高：`_config_height()` 看的是 pages.currentWidget()。屏幕上放不下就夹到
+        可用高度，里面本来就有滚动条。
+        """
+        if page is not None:
+            self.pages.setCurrentWidget(page)
+        self._settle_config_height()
+    def _settle_config_height(self):
+        """按当前这一页的内容把窗口收放到该有的高度。
+
+        量之前先把窗口撑到可用区那么高，**必须在「装得下」的状态下量**：窗口被压得比最小高还矮时，
+        外层布局会把滚动区一起压扁，量出来的一圈会虚大两三百像素，窗口就白撑到满屏。
+        撑满时页内容高就是滚动区里那块内容widget的高，于是：
+            窗口高 = 视口之上那一圈 + 页内容高 = (窗口高 - 视口高) + 内容widget高
+        屏幕上放不下就夹住，里面本来就该出滚动条。
+        """
         work = self._work_area()
-        self.win.resize(self.win.width(), max(self.win.height(), min(_SETTINGS_H, work.height())))
-        self._realign()  # 长高了，吸附时下沿要重新对齐
+        page = self.pages.currentWidget()
+        if not isinstance(page, ScrollArea):
+            return
+        floor = min(self._fit_height(), work.height())  # 再矮也不该比首页内容高还矮，但也不能超过屏幕
+        self.win.resize(self.win.width(), work.height())  # 先撑满量准（页内容不跟着窗口变高）
+        self.app.processEvents()
+        want = self.win.height() - page.viewport().height() + page.widget().height()
+        self._config_h = max(floor, min(want, work.height()))  # 记下来：吸附的 tick 直接用
+        self.win.resize(self.win.width(), self._config_h)
+        self._realign()  # 高度变了下沿就跑了，重贴一次
 
     def _back_home(self):
-        self.draft.keyEdit.clear()
+        if self.pages.currentWidget() is self.settingsPage:
+            self.draft.keyEdit.clear()  # 密钥框里的东西不留着：那页才碰它，好友那页不用清
         self.pages.setCurrentWidget(self.home)
         self.composer.show()
         self.settingsButton.setEnabled(True)
-        self._apply_height()  # 回首页：收回内容高（设置页那会儿是不动高度的）
+        self._apply_height()  # 回首页：收回内容高（配置页那会儿是不动高度的）
 
     # ------------------------------------------------------------ 生成/润色/发送
 
@@ -1481,10 +1542,27 @@ class Overlay:
 
     def _dock_height(self, work):
         """吸附时的高度：跟没吸附一个口径，都是内容多高就多高，屏幕装不下才夹。
-        设置页是长表单，别让首页那个矮高把它顶回去。"""
-        if self.pages.currentWidget() is not self.home:
-            return min(_SETTINGS_H, work.height())
-        return min(self._desired_height(), work.height())
+        停在配置页（设置 / 单个好友）就用进这一页时量好的那个高，别让首页那个矮高把它顶回去。
+        用记下来的数而不是现算：吸附是 tick 每 50ms 在调的，现算会跟着当前窗口高来回漂。"""
+        if self.pages.currentWidget() is self.home or not self._config_h:
+            return min(self._desired_height(), work.height())
+        return min(self._config_h, work.height())
+
+    def _config_height(self):
+        """配置页（设置 / 单个好友）要的窗口高度：这一页内容 + 标题栏 + 页脚。
+
+        用当前这一页自己的 `minimumSizeHint()`，**不能**用 pages / ScrollArea 的 sizeHint：
+        QStackedWidget 和各页的滚动区都会把「最大那一页」的量报上来，好友那页就会白多出一大截。
+        量得准不准关系不大：`_settle_config_height()` 会照滚动条实际差多少再补一次。
+        """
+        page = self.pages.currentWidget()
+        outer = self.win.layout().contentsMargins()
+        return (self.header.sizeHint().height() + self.footer.sizeHint().height()
+                + page.widget().minimumSizeHint().height() + outer.top() + outer.bottom())
+
+    def _config_height_floor(self):
+        """配置页窗口高度的下限：再矮也不该比首页内容高还矮（标题栏 + 页脚就占掉一大半）。"""
+        return self._fit_height()
 
     def _logical(self, rect):
         """Win32 报的是物理像素，Qt 摆窗口用的是逻辑像素：按那块屏的比例换一下。"""

@@ -24,7 +24,8 @@ from PySide6.QtGui import QFontDatabase  # noqa: E402
 from app import settings  # noqa: E402
 
 
-_STATES = ("ready", "typed", "sending", "loading", "error", "setup", "settings", "paused", "debug", "details")
+_STATES = ("ready", "typed", "sending", "loading", "error", "setup", "settings", "friend",
+           "paused", "debug", "details")
 
 # 调试视图预览用的真微信截图（只读进内存，不改不存）；没有就退一张空画面
 _FRAME = Path("/private/tmp/claude-501/-Users-lpitiless-Documents-project-wechatjev"
@@ -127,7 +128,7 @@ def main() -> int:
                      "draft_base_url": "", "reply_target": True, "dock": True,
                      "style": "话少，基本不用标点，急了才发感叹号", "thinking": False,
                      "check_update": True, "debug_view": args.state == "debug",
-                     # 按好友设置那一组的演示数据：存过设置的会话会先进下拉框
+                     # 单个好友那页的演示数据：存过设置的会话会先进下拉框
                      "friends": {_CHAT: {"relationship": "colleagues",
                                          "style": "群里说话随意点，别太正式", "context": 6}}}
 
@@ -253,6 +254,8 @@ def main() -> int:
                 ov._send_with_polish()  # 「润色并发送」：润好了直接发，不再等用户点第二次
             elif args.state == "settings":
                 ov.open_settings()
+            elif args.state == "friend":
+                ov._open_friend_settings()  # 首页那个小按钮进的那一页：只有关系 / 口吻 / 条数
             elif args.state == "details":
                 ov._toggle_details()  # 会话详情默认收着，这一档是「展开以后」的样子
                 ov.set_status("演示模式：会话详情展开后才有「对方最近说」和聊天记录。")

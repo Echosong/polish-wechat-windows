@@ -35,10 +35,10 @@ In one line: **what you type is not always the impression you want to give.**
   verbatim? That is the plain **Send** button. Both paths are there; the only difference is that one polish.
 
 **Tone is driven by relationship settings**, plus an optional style line you write yourself.
-**You can also keep a separate profile per contact** — see "Per-contact settings" in the settings page
-(or the small button at the end of the session row): pick the exact chat title, set relationship / tone /
-context length just for them. Saved once, it applies automatically next time you chat with them;
-anything you leave blank keeps following the global values.
+**You can also keep a separate profile per contact** — the small button at the end of the session row opens
+its own page, **"Single contact settings"**, kept apart from the global settings page: pick the exact chat
+title, set relationship / tone / context length just for them. Saved once, it applies automatically next time
+you chat with them; anything you leave blank keeps following the global values.
 
 | Who you are talking to | Preset you can set | What comes out |
 | --- | --- | --- |
@@ -80,6 +80,10 @@ database-reading tools most often get into trouble. Full boundaries under [Priva
 <tr>
 <td align="center">One line by default — the conversation title with its message count — plus the persistent input box and generate / polish / send; the generated line is editable, with two alternates and an undo below</td>
 <td align="center">Settings: relationship, speaking style, context length, group reply target, docking, model</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/ui_friend.png" alt="Single contact settings"></td>
+<td align="center">"Single contact settings" is **its own page** (opened by the small button at the end of the session row) with just three fields: relationship / tone, speaking style, context length. Blank fields follow the global values</td>
 </tr>
 </table>
 
@@ -138,8 +142,9 @@ The settings page asks for one key:
    protocols), plus two "custom" entries where you supply your own base URL.
 2. Click **Fetch models** to pull the list and pick one, or type a model id by hand.
 3. Pick your relationship (partner / friend / colleague / family / custom) and save.
-   To give one contact their own tone, scroll one card down to "Per-contact settings": type the exact
-   chat title and save a profile that only applies to them.
+   To give one contact their own tone you do not have to dig through the settings page: click the small
+   button at the end of the session row on the main window — it opens **"Single contact settings"**,
+   its own page. Type the exact chat title and save a profile that only applies to them.
 
 The key goes into the Windows user environment (registry `HKCU\Environment`, the same place `setx` writes) —
 only ever one name, `LLM_API_KEY`. **It never appears in a file and never in a log** (all error text is
@@ -327,7 +332,7 @@ Release; manual runs only produce an artifact.
 | Relationship | partner / friend / colleague / family / custom; sets the tone for both paths | `config.json` → `relationship` |
 | Speaking style (optional) | One line describing your own tone | `config.json` → `style` |
 | Context length | How many recent messages both paths see (3–30) | `config.json` → `context` (default 10) |
-| Per-contact settings | Give one contact / group their own relationship + speaking style + context length; anything left blank follows the global values. Saved per chat title, applied automatically for that contact | `config.json` → `friends` (`{"chat title": {"relationship": …, "style": …, "context": …}}`) |
+| Single contact settings | **Its own page** (small button at the end of the session row): give one contact / group their own relationship + speaking style + context length; anything left blank follows the global values. Saved per chat title, applied automatically for that contact | `config.json` → `friends` (`{"chat title": {"relationship": …, "style": …, "context": …}}`) |
 | Group reply target | Adds a reply-target row in group chats | `config.json` → `reply_target` (off) |
 | Dock next to chat window | Follow the chat window; dragging detaches for this run only | `config.json` → `dock` (on) |
 | Check for updates at startup | One GitHub API call | `config.json` → `check_update` (on) |
