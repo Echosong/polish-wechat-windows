@@ -5,19 +5,6 @@ https://github.com/Echosong/polish-wechat-windows
 MIT 许可（见 LICENSE）。分发或商用请保留 LICENSE 与这份 NOTICE，并在产品的「关于」页、说明文档
 或发布页注明出处。推荐写法：基于 polish-chat（https://github.com/Echosong/polish-wechat-windows）二次开发。
 
-## 出处
-
-本项目脱胎于 jev-chat-windows（https://github.com/jev-chat/jev-chat-windows，MIT，
-Copyright (c) 2026 rezoch340 and the jev-chat contributors）——窗口截图 + 离线 OCR 那套采集方案
-是在那里长出来的，代码是本项目的直接前身。
-
-jev-chat-windows 又是 Jev 聊天助手（安卓原版，https://github.com/jev-chat/jev-chat-jarvis）的
-Windows 姊妹项目，其早期版本内置的 Jev 判断内核与题目口径来自上游，版权归 Finderchangchang and
-the jev-chat contributors 所有。
-
-**那套判断内核在 polish-chat 里已经全部移除**（不再调用任何决策模型，只有「生成 + 润色」两条语言
-模型链路），上游代码在本项目的 git 历史里仍可查。上面两行版权声明按 MIT 的要求保留。
-
 ## 第三方组件
 
 | 组件 | 许可证 | 备注 |
@@ -46,15 +33,6 @@ This project's own code is licensed under the MIT License (see LICENSE).
 When you distribute or commercialize this software or a derivative, keep the
 LICENSE and this NOTICE, and credit the source, e.g.
 "Based on polish-chat (https://github.com/Echosong/polish-wechat-windows)".
-
-polish-chat is derived from jev-chat-windows
-(https://github.com/jev-chat/jev-chat-windows, MIT, Copyright (c) 2026
-rezoch340 and the jev-chat contributors), which in turn was the Windows sister
-project of Jev Chat Assistant (https://github.com/jev-chat/jev-chat-jarvis);
-the Jev decision engine and question set came from that upstream project,
-copyright Finderchangchang and the jev-chat contributors. **That decision
-engine has been removed from polish-chat**; only the generation and polishing
-language-model paths remain.
 
 Note: the release zip bundles PySide6-Fluent-Widgets, which is licensed under
 GPLv3 (free for non-commercial use; a commercial license must be purchased

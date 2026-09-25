@@ -469,25 +469,7 @@ config.json             你自己的设置，不进仓库（在 .gitignore 里�
 - 防提示词注入硬过滤；口吻样本模仿；候选解析的多形态兜底
 - 打包：PyInstaller onedir + 一键 `build.bat` + 推 tag 自动出 Release
 
-<details>
-<summary>更早的历史（作为 jev-chat-windows 的那些版本）</summary>
-
-本项目脱胎于作者自己维护的 `jev-chat-windows`。那个版本走的是「Jev 判断 → 起草 3 条 → Jev 排序」
-的三段式自动分析，要两把 key（判断 + 起草），判断内核来自安卓原版 Jev 聊天助手。
-
-重做成 polish-chat 时删掉了整个判断内核（`core/jev_client.py`、`core/questions.py` 及百炼 / TypeSafe /
-OpenRouter 决策模型那条链路）、改成手动触发的一次生成 / 润色，key 从两把收敛成一把。
-旧版本的历史记录在原来那个仓库里，不在本仓库。
-
-</details>
-
-## 出处与致谢
-
-- **本项目脱胎于 [`jev-chat-windows`](https://github.com/jev-chat/jev-chat-windows)（MIT）**——
-  窗口截图 + 离线 OCR 那套采集方案是在那里长出来的，代码是本项目的直接前身。
-- 而 `jev-chat-windows` 是 **[Jev 聊天助手](https://github.com/jev-chat/jev-chat-jarvis)**（安卓原版）
-  的 Windows 姊妹项目，早期版本内置的 Jev 判断内核（题目口径、决策模型调用）来自那个上游。
-  **那部分内核在 polish-chat 里已经全部移除**，所以本项目现在只有「生成 + 润色」两条语言模型链路。
+## 致谢
 - [RapidOCR](https://github.com/RapidAI/RapidOCR) — 离线中文 OCR，整条链路能离线全靠它
 - [windows-capture](https://github.com/NiiightmareXD/windows-capture) — Windows Graphics Capture 的 Python 绑定
 - [PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets) — 界面组件
@@ -498,11 +480,6 @@ OpenRouter 决策模型那条链路）、改成手动触发的一次生成 / 润
 ## 版权与许可
 
 本项目自身代码以 [MIT](LICENSE) 协议开源，另见 [NOTICE](NOTICE)。
-
-```
-Copyright (c) 2026 Echosong
-Portions Copyright (c) 2026 rezoch340 and the jev-chat contributors (jev-chat-windows)
-```
 
 **第三方组件与商用**：本项目自己的代码是 MIT，但 Windows 发布包（PyInstaller 打的 zip）里打进了
 [PySide6-Fluent-Widgets](https://qfluentwidgets.com/)，该组件是 GPLv3 协议，非商用免费，商用需要

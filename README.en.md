@@ -436,11 +436,6 @@ build.bat               one-click local build
 
 ## Credits
 
-- Derived from [`jev-chat-windows`](https://github.com/jev-chat/jev-chat-windows) (MIT), where the
-  window-capture + offline-OCR approach originated.
-- Which in turn was the Windows sister project of
-  [Jev Chat Assistant](https://github.com/jev-chat/jev-chat-jarvis); its Jev decision kernel and question set
-  came from that upstream project and **have been removed here**.
 - [RapidOCR](https://github.com/RapidAI/RapidOCR), [windows-capture](https://github.com/NiiightmareXD/windows-capture),
   [PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets),
   [openai](https://github.com/openai/openai-python),
@@ -450,11 +445,6 @@ build.bat               one-click local build
 ## License
 
 MIT — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-```
-Copyright (c) 2026 Echosong
-Portions Copyright (c) 2026 rezoch340 and the jev-chat contributors (jev-chat-windows)
-```
 
 The Windows release zip bundles PySide6-Fluent-Widgets (GPLv3, free for non-commercial use), so the package
 as a whole is bound by GPLv3 terms. Commercial users must buy that license or replace the component.
