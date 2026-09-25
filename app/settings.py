@@ -31,6 +31,27 @@ def _read(name: str, default=None):
         return default
     return default if value is None else value
 
+def _raw() -> dict:
+    """config.json 的原始 dict（读不到或者坏掉一律当空）。改文件前先读它，别把不认识的字段抹掉。"""
+    try:
+        with open(_CONFIG, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write(data: dict) -> None:
+    with open(_CONFIG, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+
+
+def _friends_raw() -> dict:
+    """friends 那一段的原始 dict（形状不对就当空）；改完原样写回去，顺手带上别的字段。"""
+    book = _raw().get("friends")
+    return dict(book) if isinstance(book, dict) else {}
+
+
 def relationship() -> str:
     return str(_read("relationship") or _DEFAULT_RELATIONSHIP)
 
@@ -45,6 +66,82 @@ def context() -> int:
 def style() -> str:
     """用户自己描述的说话风格（可选，自由文本），只喂给起草模型。默认空 = 只照着最近的消息模仿。"""
     return str(_read("style") or "")
+
+# ---------------------------------------------------------------- 按好友（按会话）单独一套偏好
+
+def friends() -> dict:
+    """按会话单独存的那几套偏好：{会话名: {relationship, style, context}}。
+
+    键就是微信顶部的会话标题（好友名 / 群名），跟全局那几个字段互不影响；这里没有的会话走全局。"""
+    return {str(k): v for k, v in _friends_raw().items() if str(k).strip() and isinstance(v, dict)}
+
+def friend(title: str) -> dict:
+    """这个会话单独设过的那几项；没设过就是空 dict（= 一切都跟全局一样）。"""
+    return dict(friends().get(str(title or "").strip()) or {})
+
+def relationship_for(title: str) -> str:
+    """生成 / 润色用哪个关系背景：这个好友单独设过就用它的，没设过用全局。"""
+    return str(friend(title).get("relationship") or "").strip() or relationship()
+
+def style_for(title: str) -> str:
+    """同上，说话风格。"""
+    return str(friend(title).get("style") or "").strip() or style()
+
+def context_for(title: str) -> int:
+    """同上，参考上下文条数（3~30）。脏数据一律退全局。"""
+    try:
+        n = int(friend(title).get("context"))
+    except (TypeError, ValueError):
+        return context()
+    return max(3, min(30, n))
+
+def set_friend(title: str, *, relationship_text: str | None = None,
+               style_text: str | None = None, context_n: int | None = None) -> None:
+    """给一个会话存一套单独的偏好。跟 save() 一个口径：传 None = 这项不动，传空串 / 0 = 这项回全局。
+
+    三项都空 = 整条删掉。只动 friends 这一段，别的字段原样保留——别为了一个好友把整份设置重写一遍。"""
+    name = str(title or "").strip()
+    if not name:
+        return
+    book = _friends_raw()
+    stored = book.get(name)
+    profile = dict(stored) if isinstance(stored, dict) else {}
+    if relationship_text is not None:
+        profile.pop("relationship", None)
+        value = str(relationship_text).strip()
+        if value:
+            profile["relationship"] = value
+    if style_text is not None:
+        profile.pop("style", None)
+        value = str(style_text).strip()
+        if value:
+            profile["style"] = value
+    if context_n is not None:
+        profile.pop("context", None)
+        try:
+            n = int(context_n)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 0:
+            profile["context"] = max(3, min(30, n))
+    if profile:
+        book[name] = profile
+    else:
+        book.pop(name, None)
+    data = _raw()
+    data["friends"] = book
+    _write(data)
+
+def remove_friend(title: str) -> None:
+    """删掉一个会话的单独偏好，回全局那套。"""
+    name = str(title or "").strip()
+    if not name:
+        return
+    book = _friends_raw()
+    book.pop(name, None)
+    data = _raw()
+    data["friends"] = book
+    _write(data)
 
 def draft_provider() -> str:
     """起草走哪家（见 core/providers.DRAFT_PROVIDERS）。老配置里的 openrouter/deepseek 照样认。"""
@@ -176,6 +273,7 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
         "check_update": flag(check_update_on, check_update),
         "debug_view": flag(debug_view_on, debug_view),
         "dock": flag(dock_on, dock),
+        # 按好友（按会话）的独立设置整段原样带过去，别在这一次全局保存里被抹掉
+        "friends": _friends_raw(),
     }
-    with open(_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
+    _write(data)

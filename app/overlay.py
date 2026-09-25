@@ -40,6 +40,7 @@ _RELATIONSHIPS = [
     ("恋人", "romantic partners"), ("朋友", "friends"), ("同事", "colleagues"),
     ("家人", "family"), ("自定义", None),
 ]
+_FOLLOW_GLOBAL = "跟随全局"  # 「按好友设置」里每一项的「不单独设，跟上面那套全局一样」
 
 
 class _FitCombo(ComboBox):
@@ -428,6 +429,8 @@ class Overlay:
         chat_row.addWidget(self.chatFollow)
         self.detailsButton = _tool(FIF.CHEVRON_RIGHT_MED, "展开会话详情", self._toggle_details)
         chat_row.addWidget(self.detailsButton)
+        self.friendButton = _tool(FIF.FONT, "按这个会话单独设置口吻", self._open_friend_settings)
+        chat_row.addWidget(self.friendButton)
         body.addLayout(chat_row)
         self.targetRow = QWidget()  # 只有开了「群聊指定回复对象」且这个会话是群聊才露出来
         target_row = QHBoxLayout(self.targetRow)
@@ -649,6 +652,70 @@ class Overlay:
         ))
         body.addWidget(preference)
 
+        # 按好友：上面那一套是全局的，这里给单个会话（好友 / 群名）单独存一套，存下就跟着 TA 走
+        self.friendsSurface = _Surface()
+        box = QVBoxLayout(self.friendsSurface)
+        box.setContentsMargins(16, 16, 16, 18)
+        box.setSpacing(12)
+        box.addWidget(_label("按好友设置", 16, "#304c3c", True))
+        friend_label = _label("好友 / 会话名", 13)
+        box.addWidget(friend_label)
+        self.friendBox = EditableComboBox()  # 能选已经识别到的会话，也能手打一个还没聊到的名字
+        self.friendBox.setPlaceholderText("例如：老妈、张三、项目群")
+        self.friendBox.setAccessibleName("要单独设置的好友")
+        self.friendBox.setToolTip("跟微信顶部那个会话标题一个字都别差；群聊就填群名")
+        friend_label.setBuddy(self.friendBox)
+        self.friendBox.currentTextChanged.connect(self._load_friend)  # 选一个 / 打一个字都立刻读出来
+        box.addWidget(self.friendBox)
+        box.addWidget(self._hint(
+            "存下以后，下次跟 TA 聊（单聊、群聊都算）自动用这一套。这里没填的项，仍然跟着上面那套全局设置走。"
+        ))
+        friend_relation_label = _label("关系 / 口吻", 13)
+        box.addWidget(friend_relation_label)
+        self.friendRelationBox = ComboBox()
+        self.friendRelationBox.setMinimumWidth(0)
+        self.friendRelationBox.addItems([_FOLLOW_GLOBAL] + [name for name, _ in _RELATIONSHIPS])
+        self.friendRelationBox.setAccessibleName("这个好友的关系")
+        friend_relation_label.setBuddy(self.friendRelationBox)
+        self.friendRelationBox.currentIndexChanged.connect(
+            lambda index: self.friendRelEdit.setVisible(index == len(_RELATIONSHIPS))
+        )
+        box.addWidget(self.friendRelationBox)
+        self.friendRelEdit = LineEdit()
+        self.friendRelEdit.setPlaceholderText("例如：刚认识的朋友，正在慢慢熟悉")
+        self.friendRelEdit.setAccessibleName("这个好友的自定义关系背景")
+        box.addWidget(self.friendRelEdit)
+        friend_style_label = _label("说话风格（可选）", 13)
+        box.addWidget(friend_style_label)
+        self.friendStyleEdit = LineEdit()
+        self.friendStyleEdit.setPlaceholderText("留空 = 跟全局一样")
+        self.friendStyleEdit.setAccessibleName("这个好友的说话风格")
+        friend_style_label.setBuddy(self.friendStyleEdit)
+        box.addWidget(self.friendStyleEdit)
+        friend_context_label = _label("参考上下文", 13)
+        box.addWidget(friend_context_label)
+        self.friendContextBox = SpinBox()
+        self.friendContextBox.setRange(0, 30)  # 0 显示成「跟随全局」，不显示数字
+        self.friendContextBox.setSpecialValueText(_FOLLOW_GLOBAL)
+        self.friendContextBox.setAccessibleName("这个好友的参考上下文条数")
+        self.friendContextBox.setToolTip("0 = 跟随全局；3~30 = 这个好友单独看这么多条")
+        friend_context_label.setBuddy(self.friendContextBox)
+        box.addWidget(self.friendContextBox)
+        friend_actions = QHBoxLayout()
+        self.friendDeleteButton = PushButton("删掉 TA 的单独设置")
+        self.friendDeleteButton.setAccessibleName("删掉这个好友的单独设置")
+        self.friendDeleteButton.clicked.connect(self._delete_friend)
+        friend_actions.addWidget(self.friendDeleteButton, 1)
+        self.friendSaveButton = PrimaryPushButton("保存这个好友")
+        self.friendSaveButton.setAccessibleName("保存这个好友的单独设置")
+        self.friendSaveButton.clicked.connect(self._save_friend)
+        friend_actions.addWidget(self.friendSaveButton, 1)
+        box.addLayout(friend_actions)
+        self.friendFeedback = _label("", 12, _GREEN)
+        self.friendFeedback.hide()
+        box.addWidget(self.friendFeedback)
+        body.addWidget(self.friendsSurface)
+
         models = _Surface()
         box = QVBoxLayout(models)
         box.setContentsMargins(16, 16, 16, 18)
@@ -688,6 +755,7 @@ class Overlay:
         body.addLayout(actions)
         body.addWidget(self._hint("保存后立刻用于下一次生成和润色。"))
         body.addStretch(1)
+        self._refresh_friends()  # 好友那一栏先按「存过的 + 这次识别到的会话」填一遍
         self._load_settings()
 
     def _hint(self, text):
@@ -912,9 +980,98 @@ class Overlay:
         self.settingsFeedback.setText(text)
         self.settingsFeedback.show()
 
+    # ------------------------------------------------------------ 按好友设置
+
+    def _refresh_friends(self, select=""):
+        """好友下拉框：存过单独设置的 + 这次识别到的会话，去重后填进去。
+
+        重填时屏蔽信号，别把「我在填列表」当成用户在挑好友；select 为空就接着用当前那个。"""
+        current = (select or self.friendBox.currentText()).strip()
+        names = list(settings.friends()) + [self.chatBox.itemText(i) for i in range(self.chatBox.count())]
+        names += [self._shown, self._chat]
+        self.friendBox.blockSignals(True)
+        self.friendBox.clear()
+        self.friendBox.setText("")
+        seen = set()
+        for name in names:
+            name = str(name or "").strip()
+            if name and name not in seen:
+                seen.add(name)
+                self.friendBox.addItem(name)
+        if current:
+            index = self.friendBox.findText(current)
+            if index >= 0:
+                self.friendBox.setCurrentIndex(index)
+            else:
+                self.friendBox.setText(current)  # 还没识别到的名字也能直接编辑
+        self.friendBox.blockSignals(False)
+        self._load_friend()
+
+    def _load_friend(self, *_):
+        """把下拉框里这个名字的单独设置读进界面；没设过就是空的（各项显示「跟随全局」）。"""
+        profile = settings.friend(self.friendBox.currentText().strip())
+        relationship = str(profile.get("relationship") or "").strip()
+        index = next((i + 1 for i, (_, value) in enumerate(_RELATIONSHIPS) if value == relationship),
+                     len(_RELATIONSHIPS) if relationship else 0)
+        self.friendRelationBox.setCurrentIndex(index)
+        self.friendRelEdit.setText(relationship if index == len(_RELATIONSHIPS) else "")
+        self.friendRelEdit.setVisible(index == len(_RELATIONSHIPS))
+        self.friendStyleEdit.setText(str(profile.get("style") or ""))
+        try:
+            n = int(profile.get("context"))
+        except (TypeError, ValueError):
+            n = 0
+        self.friendContextBox.setValue(max(0, min(30, n)))
+        self.friendFeedback.hide()
+
+    def _friend_feedback(self, text, error=False):
+        color = "#b44832" if error else _GREEN
+        qss = f"BodyLabel {{ color: {color}; background: transparent; }}"
+        setCustomStyleSheet(self.friendFeedback, qss, qss)
+        self.friendFeedback.setText(text)
+        self.friendFeedback.show()
+
+    def _save_friend(self):
+        """把这一套存给下拉框里那个名字；三项都是「跟随全局」= 这条删掉。"""
+        name = self.friendBox.currentText().strip()
+        if not name:
+            self._friend_feedback("先填好友名（跟微信顶部的会话标题一模一样）。", error=True)
+            self.friendBox.setFocus()
+            return
+        index = self.friendRelationBox.currentIndex()
+        relationship = "" if index <= 0 else (_RELATIONSHIPS[index - 1][1] or self.friendRelEdit.text().strip())
+        if index > 0 and not relationship:
+            self._friend_feedback("选了「自定义」就把关系背景填上，或者选「跟随全局」。", error=True)
+            self.friendRelEdit.setFocus()
+            return
+        try:
+            # 三项都显式传（空串 / 0 = 这一项回全局）：界面上就是「所见即所存」
+            settings.set_friend(name, relationship_text=relationship,
+                                style_text=self.friendStyleEdit.text().strip(),
+                                context_n=self.friendContextBox.value())
+        except Exception:
+            self._friend_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
+            return
+        self._refresh_friends(name)
+        self._friend_feedback(f"「{name}」的口吻已保存，下次跟 TA 聊就用这一套。")
+
+    def _delete_friend(self):
+        name = self.friendBox.currentText().strip()
+        if not name:
+            return
+        settings.remove_friend(name)
+        self._refresh_friends(name)
+        self._friend_feedback(f"「{name}」的单独设置已删掉，改回全局那套。")
+
+    def _open_friend_settings(self):
+        """首页会话那一行的「口吻」小按钮：进设置页，直接停在这个会话上。"""
+        self.open_settings()
+        self.friendBox.setFocus()  # 聚焦顺带把滚动条带到这一块
+
     def open_settings(self):
         if self.pages.currentWidget() != self.settingsPage:
             self._load_settings()
+        self._refresh_friends(self._shown or self._chat)  # 好友那一栏默认停在这个会话上
         self.pages.setCurrentWidget(self.settingsPage)
         self.composer.hide()  # 设置页不需要输入框，别挤着看
         self.settingsButton.setEnabled(False)

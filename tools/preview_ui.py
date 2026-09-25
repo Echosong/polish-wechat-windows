@@ -126,7 +126,10 @@ def main() -> int:
                      "draft_provider": "deepseek", "draft_model": "deepseek-flash",
                      "draft_base_url": "", "reply_target": True, "dock": True,
                      "style": "话少，基本不用标点，急了才发感叹号", "thinking": False,
-                     "check_update": True, "debug_view": args.state == "debug"}
+                     "check_update": True, "debug_view": args.state == "debug",
+                     # 按好友设置那一组的演示数据：存过设置的会话会先进下拉框
+                     "friends": {_CHAT: {"relationship": "colleagues",
+                                         "style": "群里说话随意点，别太正式", "context": 6}}}
 
     def save_demo_settings(relationship_text=None, context_n=None, *, draft_provider_text=None,
                            llm_key_text=None, draft_model_text=None, draft_base_url_text=None,
@@ -147,6 +150,20 @@ def main() -> int:
                             ("dock", dock_on)):
             if value is not None:
                 demo_settings[name] = bool(value)
+
+    def set_demo_friend(name, *, relationship_text=None, style_text=None, context_n=None):
+        """演示版的 set_friend：只动内存里那份 friends，不碰 config.json。"""
+        profile = {}
+        if relationship_text:
+            profile["relationship"] = relationship_text
+        if style_text:
+            profile["style"] = style_text
+        if context_n:
+            profile["context"] = context_n
+        if profile:
+            demo_settings["friends"][name] = profile
+        else:
+            demo_settings["friends"].pop(name, None)
 
     def fake_llm_models(protocol, base_url, api_key, timeout=10, headers=None):
         """演示不联网：给一小撮假模型，让「获取模型」按钮在本地也走得通。"""
@@ -171,6 +188,10 @@ def main() -> int:
         check_update=lambda: demo_settings["check_update"],
         debug_view=lambda: demo_settings["debug_view"],
         dock=lambda: demo_settings["dock"],
+        friends=lambda: dict(demo_settings["friends"]),
+        friend=lambda name: dict(demo_settings["friends"].get(name) or {}),
+        set_friend=set_demo_friend,
+        remove_friend=lambda name: demo_settings["friends"].pop(name, None),
         save=save_demo_settings,
     ):
         from PySide6.QtCore import QTimer

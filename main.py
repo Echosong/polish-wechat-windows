@@ -4,7 +4,8 @@
 **不自动发送**：点「发送」才粘进微信并按一次回车，整个程序只有这一处会真的发出去，没有开关。
 草稿默认也不自动写（对方来新消息只记账，不出网、不调模型，静默期零调用）；输入区那个
 「自动生成」开关打开后，对方一发新消息就自动起草一版填进输入框——发送仍然要用户自己按。
-上下文和聊天记录都按会话名（子进程 OCR 头部标题得来）分开存，切会话不串味。
+上下文和聊天记录都按会话名（子进程 OCR 头部标题得来）分开存，切会话不串味；
+关系背景 / 说话风格 / 参考上下文也按会话取（设置页「按好友设置」里单独设过就用它的，没设过用全局）。
 
     pip install rapidocr-onnxruntime numpy windows-capture PySide6-Fluent-Widgets
 模型的来源和 key 在独立设置页填写，不用改代码。IDE 里直接 Run。
@@ -162,11 +163,12 @@ def on_send(text, title):
 def generate_bg(title, msgs):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
     try:
-        cands = generate(msgs, settings.relationship(), context=settings.context(),
+        # 关系背景 / 说话风格 / 参考上下文都按会话取：这个好友单独设过就用它的，没设过用全局
+        cands = generate(msgs, settings.relationship_for(title), context=settings.context_for(title),
                          model=settings.draft_model() or None,
                          provider=settings.draft_provider(),
                          base_url=settings.draft_base_url() or None,
-                         reply_to=reply_to_of(title), style=settings.style(),
+                         reply_to=reply_to_of(title), style=settings.style_for(title),
                          thinking=settings.thinking())
         jobs.put(("replies", title, cands))
     except Exception as e:
@@ -175,11 +177,11 @@ def generate_bg(title, msgs):
 
 def polish_bg(text, title, msgs):
     try:
-        polished = polish(text, msgs, settings.relationship(), context=settings.context(),
+        polished = polish(text, msgs, settings.relationship_for(title), context=settings.context_for(title),
                           model=settings.draft_model() or None,
                           provider=settings.draft_provider(),
                           base_url=settings.draft_base_url() or None,
-                          reply_to=reply_to_of(title), style=settings.style(),
+                          reply_to=reply_to_of(title), style=settings.style_for(title),
                           thinking=settings.thinking())
         jobs.put(("polished", title, polished))
     except Exception as e:
