@@ -199,6 +199,7 @@ class Overlay:
         self._busy = False
         self._undo = None       # 上一次被覆盖掉的内容，「还原」用
         self._compact = None    # 断点模式：None 保证 _relayout 第一次调用必定生效
+        self._width = None      # 上次排布用的宽度：宽度一变内容高就得重算（状态文字会换行）
         self._pageLayouts = []
         self._scrollPages = []  # 每个滚动页（首页 / 单个好友设置 / 设置），算窗口高度时要用
         self._hintLabels = []
@@ -339,11 +340,17 @@ class Overlay:
     def _relayout(self, w, h):
         """宽度跨过断点才重新摆布局（省事）；高度只在用户自己拉过时记一笔。"""
         compact = w < 400
+        width_changed = w != self._width
+        self._width = w  # 先记下：下面 _apply_height 自己那次 resize 会绕回这里，别再重算一遍
         if compact != self._compact:
             self._compact = compact
             self._apply_compact(compact)
             if not self._details_open:
                 self._apply_height()  # 紧凑模式的页边距小一点，收着的时候顺手把窗口也收回去
+        elif width_changed and not self._details_open:
+            # 同一个档位里宽度也变了（用户拖的）：状态文字换几行、按钮上的字会不会截断都跟着变，
+            # 内容高就变了。不重算窗口就矮一截，输入框和按钮当场摞一起（用户截图那个）。
+            self._apply_height()
         # 只有首页那个高才算「铺开时的高度」；设置页、窄成一个条的那种都不算
         if (self.pages.currentWidget() is self.home and self._details_open
                 and h > self._fit_height()):
@@ -371,6 +378,20 @@ class Overlay:
         screen = QGuiApplication.screenAt(self.win.frameGeometry().center()) or self.app.primaryScreen()
         return screen.availableGeometry()
 
+    def _composer_height(self):
+        """输入区该占多高。
+
+        状态行会换行，它的 sizeHint 是照**上一次那个宽度**量出来的：窗口宽度一变（用户拖的），
+        这个数就偏——偏小窗口就矮一截、输入框和按钮当场摞一起；偏大就白留一块空。
+        heightForWidth 是按现在的宽度现算的，布局认这个数时就以它为准，再拿控件自己的最小高兜底，
+        绝不比它矮。
+        """
+        layout = self.composer.layout()
+        height = self.composer.sizeHint().height()
+        if layout.hasHeightForWidth():
+            height = layout.totalHeightForWidth(self.composer.width())
+        return max(height, self.composer.minimumSizeHint().height())
+
     def _fit_height(self):
         """把看得见的那几块高度加起来：窗口高度就照这个来，不留一大片空白。
 
@@ -382,7 +403,7 @@ class Overlay:
         if not self.updateBar.isHidden():
             height += self.updateBar.height()
         page = max(self.pages.minimumSizeHint().height(), self.home.widget().sizeHint().height())
-        composer = max(self.composer.sizeHint().height(), self.composer.minimumSizeHint().height())
+        composer = self._composer_height()
         margins = self.win.layout().contentsMargins()
         return height + page + composer + margins.top() + margins.bottom()
 
@@ -391,19 +412,59 @@ class Overlay:
         height = self._fit_height()
         return max(self._expanded_h or height, height) if self._details_open else height
 
+    def _settle_layouts(self):
+        """量高度之前先让排布算一遍（activate），顺手把会换行的状态行按现在的宽度钉准。
+
+        刚换过显隐（进度条、备选那一行）或文字（状态行）的那一帧，Qt 还在排队等一次重排，
+        这时候量到的 sizeHint 还是上一版的，窗口就矮一截。输入框和四个按钮都是定高，矮出来的那点
+        只能从它们身上挤——当场摞在一起，就是用户截图那个「输入框和按钮挨一起」。
+        activate() 把等待中的那次重排立刻结掉，量到的才是这一帧的真数。
+
+        状态行还多一层坑：QLabel 报的 sizeHint 是**按上一次那个宽度**算出来缓存着的，宽度一变
+        （用户拖窗口）这个数就偏小，外面照着它摆窗口又矮一截。heightForWidth 是按现在的宽度现算的，
+        把它顶成最小高，布局问 sizeHint 时就会被 minimumSize 兜到这个真数上；下次变矮也会跟着改。
+        """
+        self.win.layout().activate()
+        self.composer.layout().activate()
+        needed = self.status.heightForWidth(self.status.width()) if self.status.width() > 0 else 0
+        if needed > 0 and needed != self.status.minimumHeight():
+            self.status.setMinimumHeight(needed)
+
     def _apply_height(self):
         """按当前状态把窗口高度收放一次：收着矮、铺开高，全都是内容说了算。
         设置页是长表单、有自己的滚动条，别拿它的高度去撑窗口。
 
         内容一变（出备选、进度条出来、状态文字换行、群聊多一行回复对象、展开详情、更新提示）就得再调一次，
-        不然窗口停在旧高度、里面被挤成一团。
+        不然窗口停在旧高度、里面被挤成一团。量之前先 `_settle_layouts()`，别拿上一帧的数当准；
+        万一这一帧 Qt 还是没算对，`_grow_later()` 会在下一拍补回来。
         """
         if self.pages.currentWidget() is not self.home:
             return
+        self._settle_layouts()
         height = self._desired_height()
         self.win.setMinimumHeight(height)  # 下限一起顶到内容高：拿尺寸手柄也拉不出「控件摞一起」那种状态
         self.win.resize(self.win.width(), min(height, self._work_area().height()))
         self._realign()  # 高度变了下沿就不在聊天窗口那条线上了，重贴一次
+        QTimer.singleShot(0, self._grow_later)  # 下一拍复核一次，见那个方法
+
+    def _grow_later(self):
+        """下一拍复核：不够高就补上。
+
+        控件报的 sizeHint / heightForWidth 有时要等一次事件循环才改过来（状态文字刚换行、备选行
+        刚做出来那几个按钮都是这样），当帧量到的高度就可能少一行。少的那点全从输入框和四个定高按钮
+        身上挤——用户截图那个「摞在一起」，而且窗口下限已经被顶死在那儿，不会自己好。
+
+        这一拍只**长高**、也不再排自己：量出来一样或比现在矮就什么都不做，所以不会跟 `_apply_height`
+        来回弹。真长不到目标高（窗口管理器不给）也只会试这一次，不会转圈。
+        """
+        if self.pages.currentWidget() is not self.home:
+            return
+        desired = self._desired_height()
+        wanted = min(desired, self._work_area().height())
+        if wanted > self.win.height():
+            self.win.setMinimumHeight(desired)  # 下限跟着一起顶上去，免得下次又被夹回来
+            self.win.resize(self.win.width(), wanted)
+            self._realign()
 
     def _realign(self):
         """吸附着的时候按记下来的聊天窗口矩形重贴一次（「没动就不折腾」那条会挡住，先清掉）。"""
@@ -485,12 +546,15 @@ class Overlay:
         body.addStretch(1)
 
     def _build_composer(self):
-        """底部常驻的输入区：输入框 + 生成回复 / 润色 / 发送 / 润色并发送 + 备选 + 状态行。
+        """底部常驻的输入区：输入框 + 生成回复 / 润色 / 发送 / 润色并发送 + 备选 + 状态文字 + 两个开关。
         放在滚动页外面，窗口再矮也够得着这几个按钮。
 
         按钮排成两行：第一行「生成回复 + 润色」= 让 AI 写点什么；第二行「发送 + 润色并发送」
         = 把它发出去，区别只在发之前改不改。四个按钮挤一行在 420 宽的默认窗口里就只剩不到 80px 一个，
-        「润色并发送」会在按钮上被截掉。"""
+        「润色并发送」会在按钮上被截掉。
+
+        最下面两块（状态文字、两个开关）各占一整行：状态文字常是两三行，跟开关挤一行时它一长
+        就把那一行顶高、上面的备选行跟着被挤瘪。开关自己一行靠右，状态文字写多长都不动它们。"""
         self.composer = _Surface()
         box = QVBoxLayout(self.composer)
         box.setContentsMargins(14, 12, 14, 10)
@@ -537,10 +601,14 @@ class Overlay:
         self.altLayout = alt_row
         self.altRow.hide()
         box.addWidget(self.altRow)
-        status_row = QHBoxLayout()  # 状态行：左边一句状态，右边两个开关（标题栏只放标题，别挤它）
+        status_row = QHBoxLayout()  # 状态行自己占一整行：它常有两三行字，别跟开关挤在一行里
         status_row.setSpacing(8)
         self.status = _label("", 12, _MUTED)
         status_row.addWidget(self.status, 1)
+        box.addLayout(status_row)
+        switch_row = QHBoxLayout()  # 两个开关单独一行，靠右；状态文字多长都不动它们
+        switch_row.setSpacing(8)
+        switch_row.addStretch(1)
         self.autoSwitch = SwitchButton(self.composer)
         self.autoSwitch.setOnText("自动生成")
         self.autoSwitch.setOffText("手动生成")
@@ -549,7 +617,7 @@ class Overlay:
             "开：对方一发新消息就自动起草一版，只填进输入框、不会自动发送（发送永远要你自己按）")
         self.autoSwitch.setAccessibleName("自动生成回复")
         self.autoSwitch.checkedChanged.connect(self._auto_toggled)
-        status_row.addWidget(self.autoSwitch)
+        switch_row.addWidget(self.autoSwitch)
         self.captureSwitch = SwitchButton(self.composer)
         self.captureSwitch.setOnText("采集中")
         self.captureSwitch.setOffText("已暂停")
@@ -557,8 +625,8 @@ class Overlay:
         self.captureSwitch.setAccessibleName("开启或暂停采集")
         self.captureSwitch.setChecked(True)
         self.captureSwitch.checkedChanged.connect(self._capture_toggled)
-        status_row.addWidget(self.captureSwitch)
-        box.addLayout(status_row)
+        switch_row.addWidget(self.captureSwitch)
+        box.addLayout(switch_row)
         self.progress = IndeterminateProgressBar()
         self.progress.setFixedHeight(3)
         self.progress.hide()
@@ -1347,6 +1415,11 @@ class Overlay:
             self.altLayout.addWidget(undo)
             self._altButtons.append(undo)
         self.altRow.setVisible(bool(self._altButtons))
+        # 备选行本来就没收起来的时候（第一次生成留下的「还原」，再生成一次换成新按钮），
+        # 新造的按钮这一帧还是「藏着」的：不 show 一下，下面量高度就把它整行算成 0，
+        # 窗口矮一行，输入框和按钮又摞一起。父控件藏着的场合 show 也无害，等它露头自然就看见了。
+        for button in self._altButtons:
+            button.show()
         self._apply_height()  # 备选那一行出来/收起来，窗口高矮跟着走
 
     def _swap(self, index):
